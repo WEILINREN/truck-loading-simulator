@@ -1,0 +1,1742 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="トラック積載シミュレーター：仕入先マスタ・TP箱から荷姿を作成し、パレット積付と 3D ドラッグでトラック積載を検討します。">
+<title>トラック積載シミュレーター</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%232f5be0'/%3E%3Crect x='10' y='20' width='30' height='22' rx='2' fill='%23fff'/%3E%3Cpath d='M40 26h8l6 8v8H40z' fill='%23fff'/%3E%3Ccircle cx='20' cy='46' r='5' fill='%23f2c230'/%3E%3Ccircle cx='46' cy='46' r='5' fill='%23f2c230'/%3E%3C/svg%3E">
+<style>
+:root{
+  --bg:#e4eaf2; --panel:#ffffff; --glass:rgba(255,255,255,.88); --line:rgba(28,44,74,.12);
+  --ink:#1b2638; --ink-2:#56667f; --ink-3:#8796ab;
+  --cobalt:#2f5be0; --cobalt-soft:#e7edfd; --ok:#1f9a63; --ok-soft:#e1f4ea;
+  --warn:#c77f0c; --warn-soft:#fcf0d9; --bad:#d24b42; --bad-soft:#fbe4e2; --mute:#eef1f6;
+  --r:12px; --shadow:0 1px 2px rgba(20,34,60,.06),0 8px 24px rgba(20,34,60,.10);
+  --f:system-ui,-apple-system,"Hiragino Sans","Hiragino Kaku Gothic ProN","Yu Gothic UI","Meiryo","Noto Sans JP",sans-serif;
+  --mono:ui-monospace,Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font:13px/1.45 var(--f)}
+button,input,select{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:#fff;border-radius:8px;padding:6px 10px}
+button:hover{border-color:#9aa8bd}
+button.pri{background:var(--cobalt);border-color:var(--cobalt);color:#fff;font-weight:600}
+button.ok{background:var(--ok);border-color:var(--ok);color:#fff;font-weight:600}
+button.bad{color:var(--bad)}
+button.sm{padding:3px 8px;font-size:12px}
+button:disabled{opacity:.5;cursor:default}
+input[type=number],input[type=text],select{width:100%;border:1px solid var(--line);border-radius:7px;padding:5px 7px;background:#fff;min-width:0}
+input[type=number]{font-family:var(--mono);font-size:12px}
+input[type=color]{width:28px;height:28px;border:1px solid var(--line);border-radius:7px;padding:2px;background:#fff;flex:none}
+label.ck{display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--ink-2);white-space:nowrap}
+#app{display:flex;height:100vh;height:100dvh}
+#panel{width:420px;flex:none;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;transition:width .2s}
+#panel.wide{width:min(900px,62vw)}
+#panel header{padding:12px 16px 8px;display:flex;align-items:center;gap:10px}
+#panel header h1{font-size:17px;margin:0;font-weight:800}
+#panel header small{color:var(--ink-3);display:block;font-size:11px}
+.tabs{display:flex;gap:4px;padding:0 12px 8px;border-bottom:1px solid var(--line)}
+.tabs button{flex:1;border:none;background:var(--mute);font-weight:600;color:var(--ink-2);padding:7px 2px;font-size:12px}
+.tabs button.on{background:var(--cobalt);color:#fff}
+.scroll{overflow:auto;flex:1;padding:4px 14px 20px}
+section[hidden]{display:none}
+h3{font-size:13px;margin:14px 0 6px;display:flex;align-items:center;gap:6px}
+h3 .sub{font-weight:400;color:var(--ink-3);font-size:11px}
+.grid{display:grid;gap:6px 8px;grid-template-columns:repeat(3,1fr)}
+.grid.g2{grid-template-columns:repeat(2,1fr)}
+.grid.g4{grid-template-columns:repeat(4,1fr)}
+.f{display:flex;flex-direction:column;gap:2px;min-width:0}
+.f>span{font-size:11px;color:var(--ink-3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.row.mt{margin-top:8px}
+.hint{font-size:11px;color:var(--ink-3);margin:4px 0}
+.bt{border:1px solid var(--line);border-radius:10px;padding:8px;margin-bottom:6px;background:#fbfcfe}
+.bt .top{display:flex;gap:6px;align-items:center;margin-bottom:5px}
+.bt .dims{display:grid;grid-template-columns:repeat(6,1fr);gap:4px}
+.bt .dims .f>span{font-size:10px}
+.bt .flags{display:flex;gap:10px;margin-top:5px;flex-wrap:wrap;align-items:center}
+.tag{display:inline-block;font-size:10.5px;padding:1px 6px;border-radius:5px;background:var(--cobalt-soft);color:var(--cobalt);font-weight:600;white-space:nowrap}
+.tag.g{background:var(--mute);color:var(--ink-2)}
+.icon-btn{border:none;background:none;padding:4px 6px;color:var(--ink-3);font-size:15px;line-height:1}
+.icon-btn:hover{color:var(--bad)}
+table{border-collapse:collapse;width:100%;font-size:12px}
+th{background:var(--mute);font-weight:600;color:var(--ink-2);text-align:left;white-space:nowrap}
+th,td{padding:4px 6px;border-bottom:1px solid var(--line)}
+td input[type=number]{padding:3px 5px}
+tr.click{cursor:pointer}tr.click:hover td{background:var(--cobalt-soft)}
+tr.sel td{background:var(--cobalt-soft)}
+.msg{font-size:12px;padding:6px 10px;border-radius:8px;margin:6px 0}
+.msg.ok{background:var(--ok-soft);color:var(--ok)}.msg.bad{background:var(--bad-soft);color:var(--bad)}.msg.warn{background:var(--warn-soft);color:var(--warn)}
+.big{font-size:20px;font-weight:800;color:var(--cobalt)}
+.selbox{background:var(--cobalt-soft);border-radius:10px;padding:8px 10px;font-size:12px;margin-top:6px}
+.box-quick{border:1px dashed #b9c6db;border-radius:10px;padding:8px;background:#f7f9fd}
+.parts-grid{display:grid;grid-template-columns:1fr;gap:6px}
+#panel.wide .parts-grid{grid-template-columns:1fr 1fr}
+.part .dims{grid-template-columns:repeat(7,1fr)}
+.calc{font-size:11px;color:var(--ink-2);margin-left:auto}
+/* stage */
+#stage{position:relative;flex:1;min-width:0;overflow:hidden;outline:none}
+#stage canvas{display:block;width:100%;height:100%;touch-action:none}
+.bar{position:absolute;top:10px;left:10px;right:10px;display:flex;flex-wrap:wrap;gap:4px;z-index:2;pointer-events:none}
+.bar>*{pointer-events:auto}
+.bar button{background:var(--glass);backdrop-filter:blur(6px);font-size:12px;padding:5px 9px;box-shadow:var(--shadow)}
+.bar button.on{background:var(--cobalt);color:#fff;border-color:var(--cobalt)}
+.mode-pill{background:var(--ink)!important;color:#fff;border-color:var(--ink)!important;font-weight:600}
+#hud{position:absolute;left:10px;right:10px;bottom:34px;display:flex;gap:8px;flex-wrap:wrap;z-index:2;pointer-events:none}
+.card{background:var(--glass);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:var(--r);padding:7px 11px;box-shadow:var(--shadow);min-width:120px;flex:1;max-width:220px}
+.card .t{font-size:11px;color:var(--ink-3)}.card .v{font-size:17px;font-weight:700}.card .s{font-size:11px;color:var(--ink-2)}
+.meter{height:6px;border-radius:4px;background:#dfe4ec;margin-top:4px;overflow:hidden}.meter i{display:block;height:100%;border-radius:4px}
+#warns{position:absolute;right:10px;top:50px;z-index:2;display:flex;flex-direction:column;gap:4px;align-items:flex-end;pointer-events:none;max-width:60%}
+#warns div{background:var(--bad-soft);color:var(--bad);border-radius:8px;padding:4px 10px;font-size:12px;box-shadow:var(--shadow)}
+#warns div.good{background:var(--ok-soft);color:var(--ok)}
+#help{position:absolute;left:10px;bottom:8px;font-size:11px;color:var(--ink-2);background:var(--glass);padding:3px 8px;border-radius:6px;z-index:2;pointer-events:none;max-width:calc(100% - 20px);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#toast{position:absolute;top:52px;left:50%;transform:translateX(-50%);background:rgba(200,50,50,.94);color:#fff;padding:6px 14px;border-radius:8px;font-size:13px;z-index:5;opacity:0;transition:opacity .25s;pointer-events:none;max-width:90%}
+#toast.ok{background:rgba(31,154,99,.94)}
+#tip{position:absolute;display:none;background:rgba(20,30,45,.9);color:#fff;font-size:12px;padding:6px 9px;border-radius:7px;white-space:pre;z-index:4;pointer-events:none;line-height:1.5}
+#nogl{position:absolute;inset:0;display:none;place-items:center;text-align:center;color:var(--ink-2);padding:20px}
+@media (max-width:860px){
+  #app{flex-direction:column-reverse}
+  #panel,#panel.wide{width:100%;flex:1;border-right:none;border-top:1px solid var(--line)}
+  #panel.wide .parts-grid{grid-template-columns:1fr}
+  #stage{flex:none;height:52vh}
+  .bar{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .bar>*{flex:none}
+  #hud{bottom:30px;gap:4px;flex-wrap:nowrap}
+  #hud .card{min-width:0;padding:4px 7px;flex:1}
+  #hud .card:nth-child(n+4){display:none}
+  .card .v{font-size:13px}.card .s{display:none}.card .t{font-size:10px}
+  #warns{top:48px;max-width:calc(100% - 20px)}
+  #help{display:none}
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <aside id="panel">
+    <header>
+      <svg width="34" height="34" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#2f5be0"/><rect x="10" y="20" width="30" height="22" rx="2" fill="#fff"/><path d="M40 26h8l6 8v8H40z" fill="#fff"/><circle cx="20" cy="46" r="5" fill="#f2c230"/><circle cx="46" cy="46" r="5" fill="#f2c230"/></svg>
+      <div><h1>トラック積載シミュレーター</h1><small>仕入先荷姿 · パレット積付 · 3D 積載</small></div>
+    </header>
+    <nav class="tabs">
+      <button data-tab="pallet" class="on">① 荷姿・積付</button>
+      <button data-tab="truck">② トラック</button>
+      <button data-tab="master">③ 仕入先</button>
+      <button data-tab="catalog">④ 車種</button>
+    </nav>
+    <div class="scroll">
+      <!-- ① 荷姿・パレット積付 -->
+      <section id="tab-pallet">
+        <h3>パレット設定</h3>
+        <div class="f"><span>パレット規格</span><select id="p-preset"></select></div>
+        <div class="grid" style="margin-top:6px">
+          <label class="f"><span>長さ mm</span><input type="number" id="p-l"></label>
+          <label class="f"><span>幅 mm</span><input type="number" id="p-w"></label>
+          <label class="f"><span>パレット高 mm</span><input type="number" id="p-h"></label>
+          <label class="f"><span>自重 kg</span><input type="number" id="p-kg"></label>
+          <label class="f"><span>最大積載 kg</span><input type="number" id="p-maxkg"></label>
+          <label class="f"><span>最大高さ(パレット込)</span><input type="number" id="p-maxh"></label>
+          <label class="f"><span>はみ出し許容 mm</span><input type="number" id="p-oh"></label>
+        </div>
+
+        <h3>仕入先から追加 <span class="sub">マスタ登録済みの荷姿をワンタッチで追加</span></h3>
+        <div class="box-quick">
+          <div class="f"><span>仕入先</span><select id="q-sup"></select></div>
+          <div id="q-parts" style="margin-top:6px"></div>
+        </div>
+
+        <h3>荷物リスト <span class="sub">寸法 mm · 重量は 1 箱あたり（中身込み）</span></h3>
+        <div id="box-list"></div>
+        <div class="row">
+          <button id="b-add">＋ 手入力で追加</button>
+          <button id="b-clear" class="bad">すべて削除</button>
+        </div>
+        <p class="hint">回転可 = 水平 90° 回転を許可 ／ 天地無用 = 横倒し・逆さ禁止 ／ 上積み可 = 上に箱を積める ／ 段積み上限 = 何段まで積めるか（0 = 制限なし）</p>
+
+        <h3>積付計算</h3>
+        <div class="grid g2">
+          <label class="f"><span>アルゴリズム</span><select id="p-method">
+            <option value="auto">自動（推奨）</option>
+            <option value="ep">Extreme-Point 法（混載）</option>
+            <option value="layer">段積みパターン（単一箱種）</option></select></label>
+          <label class="f"><span>最低支持率 <b id="p-sup-v"></b></span><input type="range" id="p-sup" min="0.5" max="1" step="0.05"></label>
+        </div>
+        <div class="row mt"><label class="ck"><input type="checkbox" id="p-split"> 仕入先ごとにパレットを分ける（混載しない）</label></div>
+        <div class="row mt"><button class="pri" id="b-pack" style="flex:1">積付計算</button></div>
+        <div id="pack-result"></div>
+      </section>
+
+      <!-- ② トラック積載 -->
+      <section id="tab-truck" hidden>
+        <h3>車種</h3>
+        <div class="f"><span>車種</span><select id="t-preset"></select></div>
+        <div class="grid" style="margin-top:6px">
+          <label class="f"><span>荷台内寸 長 mm</span><input type="number" id="t-l"></label>
+          <label class="f"><span>荷台内寸 幅 mm</span><input type="number" id="t-w"></label>
+          <label class="f"><span>荷台内寸 高 mm</span><input type="number" id="t-h"></label>
+          <label class="f"><span>最大積載量 kg</span><input type="number" id="t-kg"></label>
+          <label class="f"><span>荷台床面地上高 mm</span><input type="number" id="t-deck"></label>
+          <label class="f"><span>ボディ</span><select id="t-body">
+            <option value="wing">ウイング</option><option value="van">バン（箱車）</option>
+            <option value="flat">平ボディ</option><option value="container">コンテナ</option></select></label>
+        </div>
+        <div class="row mt">
+          <input type="text" id="t-name" placeholder="カスタム車種名" style="flex:1">
+          <button id="b-save-truck">カスタム車種として保存</button>
+          <button id="b-del-truck" class="bad" hidden>削除</button>
+        </div>
+        <h3>自動積載</h3>
+        <div class="row">
+          <label class="ck"><input type="checkbox" id="o-rot"> 回転を許可</label>
+          <label class="ck"><input type="checkbox" id="o-stack"> 2段積みを許可</label>
+        </div>
+        <div class="grid g2" style="margin-top:6px">
+          <label class="f"><span>パレット間隔 mm</span><input type="number" id="o-gap"></label>
+          <label class="f"><span>積込順</span><select id="o-order"><option value="zxy">床面を優先して敷き詰め</option><option value="xzy">前から列ごとに段積み</option></select></label>
+        </div>
+        <div class="row mt">
+          <button class="pri" id="b-auto" style="flex:1">自動積載</button>
+          <button id="b-unload-all">すべて降ろす</button>
+        </div>
+        <h3>選択中の荷物 <span class="sub">3D 画面でクリックして選択</span></h3>
+        <div id="sel-info" class="selbox">未選択</div>
+        <div class="row mt">
+          <button id="b-rot">回転 (R)</button>
+          <button id="b-unload">降ろす</button>
+          <button id="b-dup">複製</button>
+          <button id="b-del" class="bad">削除</button>
+        </div>
+        <h3>単品貨物を追加 <span class="sub">パレットなしの木箱・設備など</span></h3>
+        <div class="bt">
+          <div class="top"><input type="color" id="c-color" value="#9c755f"><input type="text" id="c-name" value="木箱"></div>
+          <div class="dims" style="grid-template-columns:repeat(5,1fr)">
+            <label class="f"><span>長さ</span><input type="number" id="c-l" value="1200"></label>
+            <label class="f"><span>幅</span><input type="number" id="c-w" value="1000"></label>
+            <label class="f"><span>高さ</span><input type="number" id="c-h" value="1100"></label>
+            <label class="f"><span>kg</span><input type="number" id="c-kg" value="500"></label>
+            <label class="f"><span>個数</span><input type="number" id="c-n" value="1" min="1"></label>
+          </div>
+          <div class="flags"><label class="ck"><input type="checkbox" id="c-stk" checked> 上積み可</label>
+            <span style="flex:1"></span><button id="b-cargo">＋ 仮置き場に追加</button></div>
+        </div>
+        <h3>積載計画</h3>
+        <div class="row">
+          <button id="b-export">計画を保存 (JSON)</button>
+          <button id="b-import">計画を読込</button>
+          <button id="b-csv">積込リスト (CSV)</button>
+          <button id="b-shot">画像保存 (PNG)</button>
+          <input type="file" id="f-import" accept=".json,application/json" hidden>
+        </div>
+        <h3>積込順 / 積載リスト</h3>
+        <div id="order-list" class="hint">まだ積載されていません</div>
+      </section>
+
+      <!-- ③ 仕入先マスタ -->
+      <section id="tab-master" hidden>
+        <h3>仕入先</h3>
+        <div class="row">
+          <select id="m-sup" style="flex:1"></select>
+          <button id="m-new">＋ 新規仕入先</button>
+          <button id="m-del" class="bad">削除</button>
+        </div>
+        <div id="m-form"></div>
+        <h3>部品・荷姿 <span class="sub">仕入先ごとの荷姿（容器・収容数）は基本的に固定</span></h3>
+        <div id="m-parts" class="parts-grid"></div>
+        <div class="row mt"><button id="m-add-part">＋ 部品を追加</button></div>
+        <h3>一括登録 / 出力</h3>
+        <div class="row">
+          <button id="m-csv-out">マスタを CSV 出力</button>
+          <button id="m-csv-in">CSV 取込</button>
+          <button id="m-csv-tpl">CSV テンプレート</button>
+          <button id="m-sample">サンプルを再読込</button>
+          <input type="file" id="f-csv" accept=".csv,text/csv" hidden>
+        </div>
+        <p class="hint">CSV は 1 行 = 1 部品。Excel で作成した CSV（Shift_JIS / UTF-8）をそのまま取り込めます。同じ仕入先コード・品番の行は上書きされます。</p>
+        <h3>TP 箱（トヨタポリ箱規格）一覧</h3>
+        <div id="tp-table"></div>
+        <p class="hint">外寸は代表値です（メーカーにより数 mm の差があります）。風袋重量は容器ごとに実測値を入力してください。</p>
+      </section>
+
+      <!-- ④ 車種一覧 -->
+      <section id="tab-catalog" hidden>
+        <h3>車種一覧 <span class="sub">行をクリックすると選択されます</span></h3>
+        <div id="catalog"></div>
+        <p class="hint">※ 寸法・最大積載量は一般的なボディの代表値です。実際は車検証・架装仕様を確認してください。② で変更してカスタム車種として保存できます。</p>
+        <h3>データ</h3>
+        <div class="row"><button id="b-reset" class="bad">すべてのデータを初期化</button></div>
+        <p class="hint">設定・仕入先マスタ・積載計画はこのブラウザ（localStorage）に自動保存されます。別の PC で使う場合はマスタ CSV / 計画 JSON を出力して取り込んでください。</p>
+      </section>
+    </div>
+  </aside>
+
+  <main id="stage" tabindex="0">
+    <div class="bar" id="bar"></div>
+    <div id="warns"></div>
+    <div id="hud"></div>
+    <div id="help"></div>
+    <div id="toast"></div>
+    <div id="tip"></div>
+    <div id="nogl"><div><b>3D エンジンを読み込めませんでした</b><br>three.js を CDN から読み込みます。ネットワーク接続を確認して再読み込みしてください。</div></div>
+  </main>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js" onerror="document.write('\x3Cscript src=\x22https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js\x22\x3E\x3C/script\x3E')"></script>
+<script>
+"use strict";
+/* =====================================================================
+ * トラック積載シミュレーター（単一 HTML ファイル）
+ * 座標系（mm / kg）：x = 長さ方向（0 = 荷台前壁）、y = 幅方向、z = 高さ（0 = 荷台床面）
+ * three.js 変換：X = x、Y = z + 床面地上高、Z = y（単位 m）
+ * ===================================================================== */
+
+// ------------------------------------------------------------------ プリセット
+const PALETTE = ["#4e79a7","#f28e2b","#59a14f","#e15759","#76b7b2","#edc948","#b07aa1","#ff9da7",
+                 "#9c755f","#86bcb6","#d37295","#a0cbe8","#8cd17d","#f1ce63","#79706e"];
+
+const PALLET_PRESETS = {
+  "T11 (JIS 1100×1100)": {l:1100,w:1100,h:144,kg:25},
+  "T12 (1200×1000)":     {l:1200,w:1000,h:144,kg:25},
+  "1100×1300":           {l:1100,w:1300,h:144,kg:28},
+  "1100×1400":           {l:1100,w:1400,h:144,kg:30},
+  "EUR (1200×800)":      {l:1200,w:800,h:144,kg:25},
+  "US (1219×1016)":      {l:1219,w:1016,h:144,kg:25},
+};
+
+/* TP 箱（トヨタポリ箱規格）外寸の代表値 mm（長辺 × 短辺 × 高さ）
+ * 型式の数字は 短辺・長辺・高さ を表す（例 TP342 = 335 × 503 × 195）。
+ * 参考：積水テクノ成型・三甲・ヒシコンテナ等の公開規格表 */
+const TP_BOXES = [
+  {key:"TP111", l:168, w:168, h:103, cap:"1.6L"},
+  {key:"TP331", l:335, w:335, h:103},
+  {key:"TP332", l:335, w:335, h:195},
+  {key:"TP341", l:503, w:335, h:103},
+  {key:"TP342", l:503, w:335, h:195, cap:"24L"},
+  {key:"TP34系 H149", l:503, w:335, h:149},
+  {key:"TP34系 H241", l:503, w:335, h:241},
+  {key:"TP34系 H288", l:503, w:335, h:288},
+  {key:"TP361", l:670, w:335, h:103},
+  {key:"TP362", l:670, w:335, h:195, cap:"35L"},
+];
+const TP = Object.fromEntries(TP_BOXES.map(b=>[b.key, b]));
+const CONTAINERS = [...TP_BOXES.map(b=>[b.key, `${b.key}（${b.l}×${b.w}×${b.h}）`]), ["段ボール","段ボール"], ["専用容器","専用容器・専用ラック"], ["その他","その他"]];
+
+// 荷台内寸 L/W/H・最大積載量・床面地上高・ボディ・車軸位置（荷台前壁基準、負 = キャビン下）
+function T(name,L,W,H,kg,deck,body,axles,o={}){
+  return Object.assign({name,L,W,H,kg,deck,body,axles,frontAxles:1,wheelR:450,cabL:2000,cabH:2900,axleCalc:true,note:""},o);
+}
+const TRUCK_PRESETS = Object.fromEntries([
+  T("軽トラック (平ボディ)",1940,1410,1800,350,650,"flat",[-450,1450],{wheelR:280,cabL:1300,cabH:1800}),
+  T("2t 標準 (箱車)",3100,1610,1900,2000,800,"van",[-850,1950],{wheelR:340,cabL:1650,cabH:2200}),
+  T("2t ロング (箱車)",4350,1770,2050,2000,850,"van",[-900,2600],{wheelR:350,cabL:1700,cabH:2300}),
+  T("3t ワイドロング (箱車)",4600,2050,2200,3000,900,"van",[-950,2900],{wheelR:380,cabL:1800,cabH:2500}),
+  T("4t 標準 (箱車)",6200,2150,2100,3500,1050,"van",[-1100,4300]),
+  T("4t ワイド (ウイング)",6200,2350,2300,3000,1050,"wing",[-1100,4300]),
+  T("4t 低床 (ウイング)",6200,2350,2500,2900,850,"wing",[-1100,4300],{wheelR:370,cabH:2800}),
+  T("増トン 6t (ウイング)",7800,2350,2400,6500,1100,"wing",[-1150,5300],{wheelR:480,cabL:2100,cabH:3000}),
+  T("10t 大型 (ウイング)",9600,2400,2500,13000,1350,"wing",[-1250,6000,7300],{wheelR:520,cabL:2300,cabH:3200}),
+  T("10t 低床 4軸 (ウイング)",9600,2400,2700,12500,1000,"wing",[-1900,-500,6200,7500],{frontAxles:2,wheelR:430,cabL:2300,cabH:3100}),
+  T("10t 平ボディ",9600,2350,2400,13000,1350,"flat",[-1250,6000,7300],{wheelR:520,cabL:2300,cabH:3200}),
+  T("20ft コンテナ",5898,2352,2393,21700,1300,"container",[-4300,-700,3800,5100],{wheelR:500,cabL:2400,cabH:3100,axleCalc:false,note:"トレーラー＋トラクタ"}),
+  T("40ft コンテナ",12032,2352,2393,26500,1300,"container",[-4300,-700,9800,11100],{wheelR:500,cabL:2400,cabH:3100,axleCalc:false,note:"トレーラー＋トラクタ"}),
+  T("40ft HC コンテナ",12032,2352,2698,26400,1300,"container",[-4300,-700,9800,11100],{wheelR:500,cabL:2400,cabH:3100,axleCalc:false,note:"トレーラー＋トラクタ"}),
+].map(t=>[t.name,t]));
+
+/* 仕入先マスタのサンプル（※架空のデータ。実際の仕入先・品番に置き換えてください）
+ * part: 品番 / 品名 / 容器 / 外寸 l,w,h / 収容数 snp / 単重 unitKg / 風袋 tare / 段積み上限 maxStack / 回転可 rot / 天地無用 up / 上積み可 stk */
+const P_ = (no, name, cont, snp, unitKg, o={}) => {
+  const tp = TP[cont];
+  return Object.assign({no, name, cont, l:tp?tp.l:600, w:tp?tp.w:400, h:tp?tp.h:300, snp, unitKg, tare:0, maxStack:0, rot:true, up:true, stk:true, color:""}, o);
+};
+const SAMPLE_SUPPLIERS = [
+  {code:"S1001", name:"サンプル精工（株）", site:"愛知県 〇〇工場", note:"シートフレーム部品", parts:[
+    P_("SP-1001","リクライナー ASSY","TP342",8,1.6),
+    P_("SP-1002","シートアジャスターブラケット","TP332",40,0.25),
+    P_("SP-1003","スライドレール","専用容器",20,2.1,{l:1100,w:450,h:320,stk:true,maxStack:3}),
+  ]},
+  {code:"S1002", name:"サンプル化成（株）", site:"岐阜県 〇〇工場", note:"ウレタンパッド・樹脂部品", parts:[
+    P_("SP-1004","クッションパッド（ウレタン）","段ボール",6,0.9,{l:1000,w:600,h:450,stk:true,maxStack:3}),
+    P_("SP-1005","バックパッド（ウレタン）","段ボール",6,1.1,{l:1000,w:600,h:550,stk:true,maxStack:2}),
+    P_("SP-1006","シートガーニッシュ","TP362",30,0.15),
+  ]},
+  {code:"S1003", name:"サンプル縫製（株）", site:"三重県 〇〇工場", note:"シートカバー・表皮", parts:[
+    P_("SP-1007","クッションカバー","段ボール",10,0.6,{l:600,w:400,h:350}),
+    P_("SP-1008","バックカバー","段ボール",10,0.8,{l:600,w:400,h:400}),
+    P_("SP-1009","ヘッドレストカバー","TP342",30,0.12),
+  ]},
+  {code:"S1004", name:"サンプル電装（株）", site:"愛知県 〇〇工場", note:"ハーネス・電装品", parts:[
+    P_("SP-1010","シートワイヤーハーネス","TP362",20,0.35),
+    P_("SP-1011","シートスイッチ","TP331",50,0.05,{up:true, stk:true}),
+    P_("SP-1012","シートヒーター","TP342",25,0.2),
+  ]},
+  {code:"S1005", name:"サンプル資材（株）", site:"静岡県 〇〇工場", note:"フィルター資材（易損）", parts:[
+    P_("SP-1013","エアクリーナーエレメント","TP362",12,0.3,{stk:false}),
+    P_("SP-1014","エアクリーナーケース","段ボール",4,1.4,{l:800,w:600,h:500,maxStack:2}),
+  ]},
+];
+
+// ------------------------------------------------------------------ 状態
+const STORE_KEY = "truckloader.ja.v1";
+const clone = o => JSON.parse(JSON.stringify(o));
+const r2 = v => Math.round(v*100)/100;
+function boxFromPart(sup, part, boxes, color){
+  return {sup:sup.code, supName:sup.name, no:part.no, name:part.name, cont:part.cont,
+    l:part.l, w:part.w, h:part.h, kg:r2(part.unitKg*part.snp + (part.tare||0)), snp:part.snp, qty:boxes,
+    maxStack:part.maxStack||0, rot:part.rot, up:part.up, stk:part.stk, color:part.color || color};
+}
+function exampleBoxes(){
+  const s = SAMPLE_SUPPLIERS, out = [];
+  const add = (si, pi, n) => out.push(boxFromPart(s[si], s[si].parts[pi], n, PALETTE[out.length % PALETTE.length]));
+  add(0,0,24); add(0,1,30); add(0,2,8); add(3,0,20); add(3,1,12); add(2,0,16);
+  return out;
+}
+const defaults = () => ({
+  tab:"pallet",
+  pallet:{preset:"T11 (JIS 1100×1100)",l:1100,w:1100,h:144,kg:25,maxKg:1000,maxH:1500,oh:0},
+  boxes:exampleBoxes(), method:"auto", support:0.75, split:true,
+  packed:[], packView:"__all__",
+  truckKey:"4t ワイド (ウイング)", truck:clone(TRUCK_PRESETS["4t ワイド (ウイング)"]),
+  custom:{}, opts:{rot:true,stack:true,gap:0,order:"zxy"},
+  plan:[], selected:"", nextId:1, showWalls:true, labels:true, snap:10,
+  suppliers:clone(SAMPLE_SUPPLIERS), mSup:"S1001", qSup:"S1001", qUnit:"box",
+});
+let S = defaults();
+try {
+  const raw = localStorage.getItem(STORE_KEY);
+  if (raw) S = Object.assign(defaults(), JSON.parse(raw));
+} catch (e) { /* プライベートモード等で localStorage が使えない場合は無視 */ }
+let saveTimer = 0;
+function save(){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(()=>{ try{ localStorage.setItem(STORE_KEY, JSON.stringify(S)); }catch(e){} }, 300);
+}
+
+// ------------------------------------------------------------------ ユーティリティ
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+const fmt = (n, d=0) => Number(n).toLocaleString("ja-JP",{minimumFractionDigits:d,maximumFractionDigits:d});
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const EPS = 1e-6;
+const footprint = p => p.rot ? [p.w, p.l] : [p.l, p.w];
+const rectOverlap = (ax,ay,al,aw,bx,by,bl,bw,tol=1) => ax < bx+bl-tol && bx < ax+al-tol && ay < by+bw-tol && by < ay+aw-tol;
+
+/* =====================================================================
+ * 積付アルゴリズム
+ * ===================================================================== */
+function orientations(b){
+  const {l,w,h} = b; let c;
+  if (b.up) c = b.rot ? [[l,w,h],[w,l,h]] : [[l,w,h]];
+  else c = b.rot ? [[l,w,h],[w,l,h],[l,h,w],[h,l,w],[w,h,l],[h,w,l]] : [[l,w,h],[l,h,w],[h,w,l]];
+  const out = [];
+  for (const d of c) if (!out.some(o => o[0]===d[0] && o[1]===d[1] && o[2]===d[2])) out.push(d);
+  return out;
+}
+
+/** 汎用 Extreme-Point 法。items: {key, dims:[[l,w,h]..], weight, stackable, maxTop}
+ *  order: "zyx" 下段から敷き詰め／"zxy" 床面優先（前から）／"xzy" 前から列ごとに段積み */
+function epPack(region, maxH, items, {supportRatio=0.75, maxWeight=Infinity, order="zyx"} = {}){
+  const [rx0, ry0, rx1, ry1] = region;
+  const P = [];                     // {x1,y1,z1,x2,y2,z2,stk}
+  const eps = new Map([[`${rx0},${ry0},0`, [rx0, ry0, 0]]]);
+  const ax = {x:0, y:1, z:2};
+  const ord = [...order].map(c => ax[c]);
+  const cmp = (a, b) => (a[ord[0]]-b[ord[0]]) || (a[ord[1]]-b[ord[1]]) || (a[ord[2]]-b[ord[2]]);
+  const dead = new Map();           // 品目シグネチャ → 不可と判明した極点
+  const placed = [], unplaced = [];
+  let totalW = 0;
+
+  const project = (pt, a) => {
+    let best = [rx0, ry0, 0][a];
+    const [o1, o2] = [0,1,2].filter(i => i !== a);
+    for (const b of P) {
+      const lo = [b.x1,b.y1,b.z1], hi = [b.x2,b.y2,b.z2];
+      if (lo[o1] <= pt[o1]+EPS && hi[o1] > pt[o1]+EPS && lo[o2] <= pt[o2]+EPS && hi[o2] > pt[o2]+EPS &&
+          hi[a] <= pt[a]+EPS && hi[a] > best) best = hi[a];
+    }
+    return best;
+  };
+  const fits = (x, y, z, l, w, h, top) => {
+    // 0 = 可, 1 = はみ出し/干渉（単調）, 2 = 支持不足
+    if (x+l > rx1+EPS || y+w > ry1+EPS || z+h > top+EPS) return 1;
+    for (const b of P) {
+      if (x < b.x2-EPS && x+l > b.x1+EPS && y < b.y2-EPS && y+w > b.y1+EPS && z < b.z2-EPS && z+h > b.z1+EPS) return 1;
+    }
+    if (z > EPS) {
+      let area = 0;
+      for (const b of P) {
+        if (Math.abs(b.z2 - z) > 1e-3) continue;
+        const ox = Math.min(b.x2, x+l) - Math.max(b.x1, x), oy = Math.min(b.y2, y+w) - Math.max(b.y1, y);
+        if (ox > EPS && oy > EPS) { if (!b.stk) return 2; area += ox*oy; }
+      }
+      if (area < supportRatio*l*w - EPS) return 2;
+    }
+    return 0;
+  };
+
+  for (const it of items) {
+    if (totalW + it.weight > maxWeight + EPS) { unplaced.push(it); continue; }
+    const top = Math.min(maxH, it.maxTop || Infinity);
+    const sig = JSON.stringify(it.dims) + it.stackable + top;
+    if (!dead.has(sig)) dead.set(sig, new Set());
+    const deadSet = dead.get(sig);
+    const E = [...eps.entries()].filter(([k]) => !deadSet.has(k)).sort((a, b) => cmp(a[1], b[1]));
+    let best = null;
+    for (const [k, [x, y, z]] of E) {
+      let allMono = true;
+      for (const [l, w, h] of it.dims) {
+        const r = fits(x, y, z, l, w, h, top);
+        if (r === 0) { best = [x, y, z, l, w, h]; break; }
+        if (r === 2) allMono = false;
+      }
+      if (best) break;
+      if (allMono) deadSet.add(k);
+    }
+    if (!best) { unplaced.push(it); continue; }
+    const [x, y, z, l, w, h] = best;
+    placed.push({item:it, x, y, z, l, w, h});
+    totalW += it.weight;
+    P.push({x1:x, y1:y, z1:z, x2:x+l, y2:y+w, z2:z+h, stk:it.stackable});
+    eps.delete(`${x},${y},${z}`);
+    for (const pt of [[x+l, y, z], [x, y+w, z], [x, y, z+h]]) {
+      const cands = [pt, [pt[0], project(pt,1), pt[2]], [pt[0], pt[1], project(pt,2)], [project(pt,0), pt[1], pt[2]]];
+      for (let c of cands) {
+        c = c.map(v => Math.round(v*1000)/1000);
+        if (c[0] < rx1-EPS && c[1] < ry1-EPS && c[2] < maxH-EPS) eps.set(c.join(","), c);
+      }
+    }
+    for (const [k, e] of eps) {
+      if (e[0] >= x-EPS && e[0] < x+l-EPS && e[1] >= y-EPS && e[1] < y+w-EPS && e[2] >= z-EPS && e[2] < z+h-EPS) eps.delete(k);
+    }
+  }
+  return {placed, unplaced};
+}
+
+/** 2ブロック配置パターン：L×W に l×w を並べる → [[x,y,l,w]..] */
+function best2d(L, W, l, w, canRot){
+  const grid = (x0, y0, RL, RW, a, b) => {
+    const nx = Math.floor((RL+EPS)/a), ny = Math.floor((RW+EPS)/b), r = [];
+    for (let i=0;i<nx;i++) for (let j=0;j<ny;j++) r.push([x0+i*a, y0+j*b, a, b]);
+    return r;
+  };
+  const c = [grid(0,0,L,W,l,w)];
+  if (canRot) {
+    c.push(grid(0,0,L,W,w,l));
+    for (const [a,b] of [[l,w],[w,l]]) {
+      for (let k=1; k<Math.floor((L+EPS)/a); k++) { const cut=k*a; c.push(grid(0,0,cut,W,a,b).concat(grid(cut,0,L-cut,W,b,a))); }
+      for (let k=1; k<Math.floor((W+EPS)/b); k++) { const cut=k*b; c.push(grid(0,0,L,cut,a,b).concat(grid(0,cut,L,W-cut,b,a))); }
+    }
+  }
+  if (canRot && Math.abs(l-w) > EPS) c.push(pinwheel(L, W, l, w), pinwheel(L, W, w, l));
+  return c.reduce((m, x) => x.length > m.length ? x : m, []);
+}
+/** 風車型（4ブロック）パターン：A 左下 / B 右下(回転) / C 右上 / D 左上(回転) */
+function pinwheel(L, W, a, b){
+  const fl = v => Math.floor(v+EPS);
+  const grid = (x0, y0, nx, ny, sa, sb) => { const r = []; for (let i=0;i<nx;i++) for (let j=0;j<ny;j++) r.push([x0+i*sa, y0+j*sb, sa, sb]); return r; };
+  const ov = (p, q) => p[2] > 0 && q[2] > 0 && p[3] > 0 && q[3] > 0 && p[0] < q[0]+q[2]-EPS && q[0] < p[0]+p[2]-EPS && p[1] < q[1]+q[3]-EPS && q[1] < p[1]+p[3]-EPS;
+  let best = [];
+  for (let i=1; i<=fl(L/a); i++) for (let j=1; j<=fl(W/b); j++) {
+    const A = [0, 0, i*a, j*b];
+    const nbx = fl((L-A[2])/b);
+    for (let q=0; q<=fl(W/a); q++) {
+      const B = [L-nbx*b, 0, nbx*b, q*a];
+      const ncy = fl((W-B[3])/b);
+      for (let r=0; r<=fl(L/a); r++) {
+        const C = [L-r*a, W-ncy*b, r*a, ncy*b];
+        const ndx = fl((L-C[2])/b), ndy = fl((W-A[3])/a);
+        const D = [0, W-ndy*a, ndx*b, ndy*a];
+        const R = [A, B, C, D];
+        if (R.some((p, k) => R.slice(k+1).some(q2 => ov(p, q2)))) continue;
+        const n = i*j + nbx*q + r*ncy + ndx*ndy;
+        if (n > best.length) best = [...grid(A[0],A[1],i,j,a,b), ...grid(B[0],B[1],nbx,q,b,a), ...grid(C[0],C[1],r,ncy,a,b), ...grid(D[0],D[1],ndx,ndy,b,a)];
+      }
+    }
+  }
+  return best;
+}
+
+/** 単一箱種の段積み（奇数段はミラーして交互積み） */
+function layerPack(spec, bt, ti, qty){
+  const oh = spec.oh, L = spec.l + 2*oh, W = spec.w + 2*oh, Hmax = Math.max(0, spec.maxH - spec.h);
+  const capW = bt.kg > 0 ? Math.floor((spec.maxKg+EPS)/bt.kg) : 1e9;
+  const ups = [[bt.l, bt.w, bt.h]];
+  if (!bt.up) ups.push([bt.l, bt.h, bt.w], [bt.w, bt.h, bt.l]);
+  let best = [];
+  for (const [a, b, h] of ups) {
+    if (h > Hmax+EPS) continue;
+    const pat = best2d(L, W, a, b, bt.rot || !bt.up);
+    if (!pat.length) continue;
+    const px1 = Math.max(...pat.map(p=>p[0]+p[2])), py1 = Math.max(...pat.map(p=>p[1]+p[3]));
+    const dx = (L-px1)/2 - oh, dy = (W-py1)/2 - oh;
+    const layers = Math.min(bt.stk ? Math.floor((Hmax+EPS)/h) : 1, bt.maxStack > 0 ? bt.maxStack : Infinity);
+    const n = Math.min(qty, capW, layers*pat.length);
+    const res = [];
+    for (let k=0;k<n;k++) {
+      const li = Math.floor(k/pat.length), pi = k % pat.length;
+      let [x, y, pl, pw] = pat[pi];
+      if (li % 2) { x = px1-x-pl; y = py1-y-pw; }
+      res.push({t:ti, x:x+dx, y:y+dy, z:li*h, l:pl, w:pw, h});
+    }
+    if (res.length > best.length) best = res;
+  }
+  return best;
+}
+
+function packOne(spec, bts, remaining, method, support){
+  const oh = spec.oh;
+  const region = [-oh, -oh, spec.l+oh, spec.w+oh];
+  const active = remaining.map((n,i)=>n>0?i:-1).filter(i=>i>=0);
+  const results = [];
+  if ((method==="auto"||method==="layer") && active.length===1) results.push(layerPack(spec, bts[active[0]], active[0], remaining[active[0]]));
+  if (method==="auto" || method==="ep" || !results.length) {
+    const items = [];
+    for (const i of active) for (let k=0;k<remaining[i];k++) items.push({key:i, dims:orientations(bts[i]), weight:bts[i].kg, stackable:bts[i].stk, maxTop: bts[i].maxStack > 0 ? bts[i].maxStack*bts[i].h : 0});
+    items.sort((a,b) => (a.stackable===b.stackable?0:a.stackable?-1:1) || (b.dims[0][2]-a.dims[0][2]) ||
+      (b.dims[0][0]*b.dims[0][1]-a.dims[0][0]*a.dims[0][1]) || (b.weight-a.weight));
+    const {placed} = epPack(region, Math.max(0, spec.maxH-spec.h), items, {supportRatio:support, maxWeight:spec.maxKg, order:"zyx"});
+    results.push(placed.map(p => ({t:p.item.key, x:p.x, y:p.y, z:p.z, l:p.l, w:p.w, h:p.h})));
+  }
+  return results.reduce((m,x)=>x.length>m.length?x:m, []);
+}
+
+/** 全ての箱をパレットに積付（必要な枚数だけ使用）→ {pallets, leftover} */
+function packPallets(spec, bts, method, support){
+  const remaining = bts.map(b => Math.max(0, Math.floor(b.qty)||0));
+  const pallets = [];
+  while (remaining.some(n=>n>0) && pallets.length < 300) {
+    const pl = packOne(spec, bts, remaining, method, support);
+    if (!pl.length) break;
+    for (const p of pl) remaining[p.t]--;
+    pallets.push(makePalletObject(spec, bts, pl));
+  }
+  const leftover = bts.map((b,i)=>[b.name, remaining[i]]).filter(([,n])=>n>0);
+  return {pallets, leftover};
+}
+
+/** パレット荷物オブジェクト（外形基準：x/y は外形の左前角 = 0、z はパレット底面 = 0） */
+function makePalletObject(spec, bts, pl){
+  let x0=0, y0=0, x1=spec.l, y1=spec.w, top=0;
+  for (const p of pl) { x0=Math.min(x0,p.x); y0=Math.min(y0,p.y); x1=Math.max(x1,p.x+p.l); y1=Math.max(y1,p.y+p.w); top=Math.max(top,p.z+p.h); }
+  const counts = {};
+  for (const p of pl) counts[bts[p.t].name] = (counts[bts[p.t].name]||0)+1;
+  const loadKg = pl.reduce((s,p)=>s+bts[p.t].kg, 0);
+  const r1 = v => Math.round(v*10)/10;
+  const used = pl.reduce((s,p)=>s+p.l*p.w*p.h, 0);
+  const cap = (spec.l+2*spec.oh)*(spec.w+2*spec.oh)*Math.max(1, spec.maxH-spec.h);
+  return {
+    id:"", label:"", desc:Object.entries(counts).map(([k,v])=>`${k}×${v}`).join("、"),
+    l:r1(x1-x0), w:r1(y1-y0), h:r1(spec.h+top),
+    base:{l:spec.l, w:spec.w, h:spec.h, ox:r1(-x0), oy:r1(-y0)},
+    boxes:pl.map(p=>[r1(p.x-x0), r1(p.y-y0), r1(spec.h+p.z), r1(p.l), r1(p.w), r1(p.h), p.t]),
+    colors:bts.map((b,i)=>b.color||PALETTE[i%PALETTE.length]),
+    names:bts.map(b=>b.name), boxWeights:bts.map(b=>b.kg), baseWeight:spec.kg,
+    weight:r1(loadKg+spec.kg), stackable:pl.every(p=>bts[p.t].stk),
+    count:pl.length, util:used/cap, x:0, y:0, z:0, rot:0,
+  };
+}
+
+/** パレット → トラック 自動配置 */
+function arrangeInTruck(truck, pallets, {rot=true, stack=true, gap=0, order="zxy"} = {}){
+  const items = pallets.map(p => {
+    const l = p.l+gap, w = p.w+gap, dims = [[l, w, p.h]];
+    if (rot && Math.abs(l-w) > EPS) dims.push([w, l, p.h]);
+    return {key:p, dims, weight:p.weight, stackable:!!p.stackable && stack};
+  });
+  items.sort((a,b) => (b.dims[0][0]*b.dims[0][1] - a.dims[0][0]*a.dims[0][1]) || (b.weight-a.weight));
+  const {placed, unplaced} = epPack([0, 0, truck.L+gap, truck.W+gap], truck.H, items, {supportRatio:0.9, maxWeight:truck.kg, order});
+  const loaded = placed.map(({item, x, y, z, l}) => {
+    const p = {...item.key};
+    p.rot = Math.abs(l - (p.l+gap)) < EPS ? 0 : 1;
+    p.x = Math.round(x+gap/2); p.y = Math.round(y+gap/2); p.z = Math.round(z);
+    return p;
+  });
+  if (loaded.length) {   // 幅方向センタリング
+    const ymin = Math.min(...loaded.map(p=>p.y)), ymax = Math.max(...loaded.map(p=>p.y+footprint(p)[1]));
+    const shift = Math.round((truck.W - (ymax-ymin))/2 - ymin);
+    for (const p of loaded) p.y += shift;
+  }
+  return {loaded, rest:unplaced.map(it=>({...it.key}))};
+}
+
+/* =====================================================================
+ * 集計
+ * ===================================================================== */
+const inTruck = (t, p, tol=2) => { const [fl,fw]=footprint(p); return p.x>=-tol && p.y>=-tol && p.z>=-tol && p.x+fl<=t.L+tol && p.y+fw<=t.W+tol; };
+
+function palletCog(p){
+  let W=0, mx=0, my=0, mz=0;
+  if (p.base) { const b=p.base, bw=p.baseWeight||0; W+=bw; mx+=bw*(b.ox+b.l/2); my+=bw*(b.oy+b.w/2); mz+=bw*b.h/2; }
+  for (const b of p.boxes) { const wt=(p.boxWeights||[])[b[6]] ?? 1; W+=wt; mx+=wt*(b[0]+b[3]/2); my+=wt*(b[1]+b[4]/2); mz+=wt*(b[2]+b[5]/2); }
+  const [u,v,c] = W>0 ? [mx/W,my/W,mz/W] : [p.l/2,p.w/2,p.h/2];
+  return p.rot ? [p.x+v, p.y+(p.l-u), p.z+c] : [p.x+u, p.y+v, p.z+c];
+}
+
+function computeStats(t, plan){
+  const loaded = plan.filter(p=>inTruck(t,p)), staged = plan.filter(p=>!inTruck(t,p));
+  const weight = loaded.reduce((s,p)=>s+p.weight, 0);
+  const floor = loaded.filter(p=>p.z<2).reduce((s,p)=>{const [a,b]=footprint(p); return s+a*b;}, 0);
+  const vol = loaded.reduce((s,p)=>{const [a,b]=footprint(p); return s+a*b*p.h;}, 0);
+  const boxes = loaded.reduce((s,p)=>s+(p.boxes?p.boxes.length:0), 0);
+  const warnings = [];
+  let cog = null, axle = null;
+  if (weight > t.kg) warnings.push(`過積載：${fmt(weight)} kg > 最大積載量 ${fmt(t.kg)} kg`);
+  for (const p of loaded) if (p.z+p.h > t.H+2) warnings.push(`${p.label} が荷台高さを超過`);
+  for (let i=0;i<loaded.length;i++) for (let j=i+1;j<loaded.length;j++) {
+    const a=loaded[i], b=loaded[j], [al,aw]=footprint(a), [bl,bw]=footprint(b);
+    if (rectOverlap(a.x,a.y,al,aw,b.x,b.y,bl,bw) && a.z < b.z+b.h-1 && b.z < a.z+a.h-1) warnings.push(`${a.label} と ${b.label} が干渉`);
+  }
+  if (weight > 0) {
+    let mx=0,my=0,mz=0;
+    for (const p of loaded) { const c=palletCog(p); mx+=p.weight*c[0]; my+=p.weight*c[1]; mz+=p.weight*c[2]; }
+    cog = [mx/weight, my/weight, mz/weight];
+    const lat = (cog[1]-t.W/2)/t.W;
+    if (Math.abs(lat) > 0.10) warnings.push(`重心が${lat>0?"右":"左"}に ${Math.round(Math.abs(lat)*100)}% 偏っています（目安 ≤10%）`);
+    if (t.axleCalc && t.axles.length >= 2) {
+      const nf = Math.max(1, Math.min(t.frontAxles, t.axles.length-1));
+      const fx = t.axles.slice(0,nf).reduce((a,b)=>a+b,0)/nf, rx = t.axles.slice(nf).reduce((a,b)=>a+b,0)/(t.axles.length-nf);
+      const rear = weight*(cog[0]-fx)/(rx-fx), front = weight-rear;
+      axle = {front, rear, fp:front/weight*100, rp:rear/weight*100};
+      if (rear > weight) warnings.push("重心が後軸より後方です（前軸の抜重に注意）");
+      else if (front > weight*0.6 && weight > t.kg*0.3) warnings.push("荷重が前寄りです（前軸荷重に注意）");
+    }
+  }
+  const order = [...loaded].sort((a,b)=>(Math.round(a.x/200)-Math.round(b.x/200)) || (a.z-b.z) || (a.y-b.y));
+  return {loaded, staged, weight, boxes, cog, axle, warnings, order,
+    payloadPct: t.kg ? weight/t.kg*100 : 0, floorPct: floor/(t.L*t.W)*100, volPct: vol/(t.L*t.W*t.H)*100,
+    usedLen: Math.max(0, ...loaded.map(p=>p.x+footprint(p)[0]))};
+}
+
+/* =====================================================================
+ * 3D シーン
+ * ===================================================================== */
+const MM = 0.001;
+const stage = $("#stage");
+let G = null;   // three.js 関連
+
+function initScene(){
+  if (!window.THREE) { $("#nogl").style.display = "grid"; return; }
+  const renderer = new THREE.WebGLRenderer({antialias:true, preserveDrawingBuffer:true});
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  stage.prepend(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color("#e4eaf2");
+  const camera = new THREE.PerspectiveCamera(40, 1, 0.05, 600);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f99, 0.62));
+  const sun = new THREE.DirectionalLight(0xffffff, 0.5);
+  sun.castShadow = true; sun.shadow.mapSize.set(2048, 2048);
+  scene.add(sun, sun.target);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(300, 300), new THREE.MeshStandardMaterial({color:"#d6dce5", roughness:1}));
+  ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+  const grid = new THREE.GridHelper(300, 300, 0xb9c0ca, 0xc9ced6); grid.position.y = 0.001; scene.add(grid);
+  const groups = {truck:new THREE.Group(), walls:new THREE.Group(), pallets:new THREE.Group(), env:new THREE.Group()};
+  Object.values(groups).forEach(g => scene.add(g));
+  const helper = color => {
+    const h = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1,1,1)),
+      new THREE.LineBasicMaterial({color, depthTest:false, transparent:true}));
+    h.renderOrder = 20; h.visible = false; scene.add(h); return h;
+  };
+  G = {renderer, scene, camera, sun, groups, ghost:helper(0x22aa44), sel:helper(0x2f5be0), objects:new Map(),
+       deck:0, truck:null, pallets:[], mode:"pallet", editable:false,
+       cam:{target:new THREE.Vector3(), radius:20, theta:0.8, phi:1.0}, need:true};
+  const loop = () => { requestAnimationFrame(loop); if (G.need) { G.need = false; renderer.render(scene, camera); } };
+  loop();
+  new ResizeObserver(resize).observe(stage);
+  resize();
+  initControls();
+}
+const requestRender = () => { if (G) G.need = true; };
+function resize(){
+  const w = stage.clientWidth || 800, h = stage.clientHeight || 500;
+  G.renderer.setSize(w, h, false);
+  G.camera.aspect = w/h; G.camera.updateProjectionMatrix(); requestRender();
+}
+function updateCamera(){
+  const c = G.cam, sp = Math.sin(c.phi);
+  G.camera.position.set(c.target.x + c.radius*sp*Math.sin(c.theta), c.target.y + c.radius*Math.cos(c.phi), c.target.z + c.radius*sp*Math.cos(c.theta));
+  G.camera.lookAt(c.target);
+  requestRender();
+}
+
+const mat = (color, o={}) => new THREE.MeshStandardMaterial(Object.assign({color, roughness:0.7, metalness:0.1}, o));
+function addBox(group, x, y, z, l, w, h, material, shadow=true){
+  const m = new THREE.Mesh(new THREE.BoxGeometry(l*MM, h*MM, w*MM), material);
+  m.position.set((x+l/2)*MM, (z+h/2)*MM, (y+w/2)*MM);
+  m.castShadow = shadow; m.receiveShadow = true; group.add(m); return m;
+}
+function disposeTree(o){
+  o.traverse(c => {
+    if (c.geometry) c.geometry.dispose();
+    if (c.material) (Array.isArray(c.material)?c.material:[c.material]).forEach(m => { if (m.map) m.map.dispose(); m.dispose(); });
+  });
+}
+function clearGroup(g){ disposeTree(g); g.clear ? g.clear() : g.children.slice().forEach(c=>g.remove(c)); }
+
+function buildTruck(){
+  const {truck:tg, walls:wg} = G.groups;
+  clearGroup(tg); clearGroup(wg);
+  const t = G.mode === "truck" ? S.truck : null;
+  G.truck = t; G.deck = t ? t.deck : 0;
+  if (!t) return;
+  const {L, W, H, deck, wheelR:wr, body} = t, th = 40;
+  const axles = t.axles || [];
+  const minX = Math.min(-t.cabL-200, ...axles.map(a=>a-wr)), maxX = Math.max(L, ...axles.map(a=>a+wr));
+  addBox(tg, minX+200, W/2-450, wr*0.9, maxX-minX-200, 900, deck-120-wr*0.9, mat("#3a3f47"));      // シャシー
+  addBox(tg, -th, -th, deck-120, L+2*th, W+2*th, 120, mat("#7d6a55"));                               // 床
+  const cabX = body === "container" ? -t.cabL-900 : -t.cabL-120;
+  const cabW = Math.min(W+2*th, 2490), cabZ0 = wr*0.8, cabH = t.cabH-cabZ0;
+  const cabC = body === "container" ? "#2a5a9a" : "#e9ecef";
+  addBox(tg, cabX, (W-cabW)/2, cabZ0, t.cabL, cabW, cabH*0.62, mat(cabC));
+  addBox(tg, cabX+t.cabL*0.12, (W-cabW)/2, cabZ0+cabH*0.62, t.cabL*0.88, cabW, cabH*0.38, mat(cabC));
+  const glassM = mat("#5b7891", {metalness:0.4, roughness:0.2});
+  addBox(tg, cabX-15, (W-cabW)/2+120, cabZ0+cabH*0.5, 30, cabW-240, cabH*0.42, glassM, false);
+  for (const sy of [(W-cabW)/2-8, (W+cabW)/2-22]) addBox(tg, cabX+t.cabL*0.25, sy, cabZ0+cabH*0.62, t.cabL*0.55, 30, cabH*0.28, glassM, false);
+  const wheelM = mat("#1d1f22", {roughness:0.9}), hubM = mat("#b8bec7", {metalness:0.6}), tw = 280;
+  axles.forEach((ax, i) => {
+    const dual = i >= (t.frontAxles||1);
+    for (const side of [0, 1]) {
+      const y = side === 0 ? -th+10 : W+th-10-(dual?2*tw:tw);
+      for (let k = 0; k < (dual?2:1); k++) {
+        const m = new THREE.Mesh(new THREE.CylinderGeometry(wr*MM, wr*MM, tw*MM*0.94, 28), wheelM);
+        m.rotation.x = Math.PI/2; m.position.set(ax*MM, wr*MM, (y+tw*k+tw/2)*MM); m.castShadow = true; tg.add(m);
+        const hub = new THREE.Mesh(new THREE.CylinderGeometry(wr*0.5*MM, wr*0.5*MM, tw*MM*0.96, 20), hubM);
+        hub.rotation.x = Math.PI/2; hub.position.copy(m.position); tg.add(hub);
+      }
+    }
+  });
+  const glass = new THREE.MeshStandardMaterial({color: body==="container"?"#b4462f":"#c9d3df", transparent:true, opacity:0.16, depthWrite:false, side:THREE.DoubleSide});
+  const edge = new THREE.LineBasicMaterial({color:0x55657a});
+  const wallH = body === "flat" ? 400 : H;
+  const walls = [[-th,-th,0,th,W+2*th, body==="flat"?Math.min(H,1200):H], [0,-th,0,L,th,wallH], [0,W,0,L,th,wallH]];
+  if (body !== "flat") walls.push([-th,-th,H,L+th,W+2*th,th]);
+  for (const [x,y,z,l,w,h] of walls) {
+    const m = addBox(wg, x, y, z+deck, l, w, h, glass, false); m.renderOrder = 5;
+    const e = new THREE.LineSegments(new THREE.EdgesGeometry(m.geometry), edge); e.position.copy(m.position); wg.add(e);
+  }
+  const env = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(L*MM, H*MM, W*MM)),
+    new THREE.LineDashedMaterial({color:0x2f5be0, dashSize:0.08, gapSize:0.06}));
+  env.position.set(L/2*MM, (deck+H/2)*MM, W/2*MM); env.computeLineDistances(); tg.add(env);
+  wg.visible = S.showWalls;
+}
+
+function buildEnvelope(e){
+  clearGroup(G.groups.env);
+  if (!e) return;
+  const g = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(e.l*MM, e.h*MM, e.w*MM)),
+    new THREE.LineDashedMaterial({color:0xd04040, dashSize:0.04, gapSize:0.03}));
+  g.position.set((e.x+e.l/2)*MM, (e.z+e.h/2)*MM, (e.y+e.w/2)*MM); g.computeLineDistances();
+  G.groups.env.add(g);
+}
+
+// 箱をまとめて 1 つのジオメトリに（頂点カラー + 線）
+const FACES = [
+  [[1,0,0],[[1,0,0],[1,1,0],[1,1,1],[1,0,1]]], [[-1,0,0],[[0,0,1],[0,1,1],[0,1,0],[0,0,0]]],
+  [[0,1,0],[[0,1,0],[0,1,1],[1,1,1],[1,1,0]]], [[0,-1,0],[[0,0,0],[1,0,0],[1,0,1],[0,0,1]]],
+  [[0,0,1],[[0,0,1],[1,0,1],[1,1,1],[0,1,1]]], [[0,0,-1],[[1,0,0],[0,0,0],[0,1,0],[1,1,0]]],
+];
+function boxGeometry(boxes, colors){
+  const pos=[], nor=[], col=[], idx=[], lines=[], c = new THREE.Color();
+  for (const b of boxes) {
+    const X=b[0]*MM, Y=b[2]*MM, Z=b[1]*MM, SX=b[3]*MM, SY=b[5]*MM, SZ=b[4]*MM;
+    c.set(colors[b[6]] || "#999");
+    for (const [n, vs] of FACES) {
+      const base = pos.length/3, sh = n[1]===1 ? 1 : n[1]===-1 ? 0.6 : (n[0]!==0 ? 0.86 : 0.76);
+      for (const v of vs) { pos.push(X+v[0]*SX, Y+v[1]*SY, Z+v[2]*SZ); nor.push(...n); col.push(c.r*sh, c.g*sh, c.b*sh); }
+      idx.push(base, base+1, base+2, base, base+2, base+3);
+    }
+    const x0=X,x1=X+SX,y0=Y,y1=Y+SY,z0=Z,z1=Z+SZ;
+    lines.push(x0,y0,z0,x1,y0,z0, x1,y0,z0,x1,y0,z1, x1,y0,z1,x0,y0,z1, x0,y0,z1,x0,y0,z0,
+               x0,y1,z0,x1,y1,z0, x1,y1,z0,x1,y1,z1, x1,y1,z1,x0,y1,z1, x0,y1,z1,x0,y1,z0,
+               x0,y0,z0,x0,y1,z0, x1,y0,z0,x1,y1,z0, x1,y0,z1,x1,y1,z1, x0,y0,z1,x0,y1,z1);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  g.setAttribute("color", new THREE.Float32BufferAttribute(col, 3));
+  g.setIndex(idx);
+  const lg = new THREE.BufferGeometry();
+  lg.setAttribute("position", new THREE.Float32BufferAttribute(lines, 3));
+  return [g, lg];
+}
+
+function textSprite(text){
+  const cv = document.createElement("canvas"), ctx = cv.getContext("2d"), fs = 44;
+  ctx.font = `bold ${fs}px sans-serif`;
+  const w = Math.ceil(ctx.measureText(text).width) + 28; cv.width = w; cv.height = fs + 22;
+  ctx.font = `bold ${fs}px sans-serif`; ctx.fillStyle = "rgba(20,30,45,0.85)";
+  const r = 14, H = cv.height;
+  ctx.beginPath(); ctx.moveTo(r,0); ctx.arcTo(w,0,w,H,r); ctx.arcTo(w,H,0,H,r); ctx.arcTo(0,H,0,0,r); ctx.arcTo(0,0,w,0,r); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.textBaseline = "middle"; ctx.textAlign = "center"; ctx.fillText(text, w/2, H/2+2);
+  const sp = new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(cv), depthTest:false, transparent:true}));
+  sp.scale.set(0.22*w/H, 0.22, 1); sp.renderOrder = 10; sp.userData.isLabel = true;
+  return sp;
+}
+
+let woodM, woodD, lineM, boxM;
+function buildPalletObject(p){
+  if (!woodM) {
+    woodM = mat("#c79a5f", {roughness:0.95}); woodD = mat("#a77b45", {roughness:0.95});
+    lineM = new THREE.LineBasicMaterial({color:0x1d2633, transparent:true, opacity:0.55});
+    boxM = new THREE.MeshStandardMaterial({vertexColors:true, roughness:0.75, metalness:0});
+  }
+  const outer = new THREE.Group(), inner = new THREE.Group(); outer.add(inner);
+  const b = p.base;
+  if (b && b.h > 0) {
+    const top = Math.min(30, b.h*0.25);
+    addBox(inner, b.ox, b.oy, b.h-top, b.l, b.w, top, woodM);
+    addBox(inner, b.ox, b.oy, 0, b.l, b.w, Math.min(22, b.h*0.15), woodM);
+    const bw = Math.min(110, b.w*0.12);
+    for (const f of [0, 0.5, 1]) addBox(inner, b.ox, b.oy+f*(b.w-bw), 0, b.l, bw, b.h-top, woodD);
+  }
+  if (p.boxes && p.boxes.length) {
+    const [g, lg] = boxGeometry(p.boxes, p.colors||[]);
+    const m = new THREE.Mesh(g, boxM); m.castShadow = true; m.receiveShadow = true; inner.add(m);
+    inner.add(new THREE.LineSegments(lg, lineM));
+  }
+  const label = textSprite(p.label || p.id); label.visible = S.labels; outer.add(label); outer.userData.label = label;
+  outer.traverse(o => o.userData.pid = p.id);
+  placeObject(outer, p);
+  return outer;
+}
+function placeObject(obj, p){
+  const inner = obj.children[0];
+  if (p.rot) { inner.rotation.y = Math.PI/2; inner.position.set(0, 0, p.l*MM); }
+  else { inner.rotation.y = 0; inner.position.set(0, 0, 0); }
+  const [fl, fw] = footprint(p);
+  obj.position.set(p.x*MM, (p.z+G.deck)*MM, p.y*MM);
+  obj.userData.label.position.set(fl/2*MM, (p.h+160)*MM, fw/2*MM);
+}
+function setHelper(h, x, y, z, l, w, ht){
+  h.scale.set(l*MM+0.01, ht*MM+0.01, w*MM+0.01);
+  h.position.set((x+l/2)*MM, (z+G.deck+ht/2)*MM, (y+w/2)*MM);
+}
+
+/** 現在のモードに合わせて荷物を再構築 */
+function buildPallets(){
+  const g = G.groups.pallets;
+  for (const o of G.objects.values()) { disposeTree(o); g.remove(o); }
+  G.objects.clear();
+  if (G.mode === "truck") { G.pallets = S.plan; G.editable = true; buildEnvelope(null); }
+  else {
+    G.editable = false;
+    const list = S.packed;
+    if (S.packView === "__all__" || !list.find(p=>p.id===S.packView)) {
+      let x = 0, y = 0, rowW = 0;
+      G.pallets = list.map((p, i) => {
+        if (i && i % 5 === 0) { x = 0; y += rowW + 400; rowW = 0; }
+        const q = {...p, x, y, z:0, rot:0}; x += p.l + 400; rowW = Math.max(rowW, p.w); return q;
+      });
+      buildEnvelope(null);
+    } else {
+      const p = list.find(q=>q.id===S.packView), sp = S.pallet;
+      G.pallets = [{...p, x:0, y:0, z:0, rot:0}];
+      buildEnvelope({x:p.base.ox-sp.oh, y:p.base.oy-sp.oh, z:0, l:sp.l+2*sp.oh, w:sp.w+2*sp.oh, h:sp.maxH});
+    }
+  }
+  for (const p of G.pallets) { const o = buildPalletObject(p); G.objects.set(p.id, o); g.add(o); }
+  updateSelection();
+  requestRender();
+}
+function updateSelection(){
+  const p = G.mode === "truck" ? G.pallets.find(q=>q.id===S.selected) : null;
+  if (!p) { G.sel.visible = false; requestRender(); return; }
+  setHelper(G.sel, p.x, p.y, p.z, ...footprint(p), p.h); G.sel.visible = true; requestRender();
+}
+
+/** 表示モード（パレット / トラック）を切替えて再構築 */
+function rebuild3D(resetView){
+  if (!G) return;
+  G.mode = S.tab === "pallet" ? "pallet" : "truck";
+  buildTruck(); buildPallets(); renderBar();
+  if (resetView) setView("iso");
+}
+
+function sceneBounds(){
+  const t = G.truck;
+  if (t) return {x0:-t.cabL-1000, x1:t.L+300, y0:-200, y1:t.W+200, z0:0, z1:t.deck+t.H};
+  let b = {x0:0, x1:1200, y0:0, y1:1200, z0:0, z1:1500};
+  for (const p of G.pallets) { const [fl,fw]=footprint(p); b = {x0:Math.min(b.x0,p.x), x1:Math.max(b.x1,p.x+fl), y0:Math.min(b.y0,p.y), y1:Math.max(b.y1,p.y+fw), z0:0, z1:Math.max(b.z1,p.z+p.h)}; }
+  return b;
+}
+const VIEWS = {iso:[0.85,0.75,1.0], iso2:[1.05,0.7,-0.9], top:[0,1,0.02], side:[0,0.12,1], rear:[1,0.25,0], front:[-1,0.3,0]};
+function setView(name){
+  const b = sceneBounds(), t = G.truck;
+  const cx=(b.x0+b.x1)/2*MM, cz=(b.y0+b.y1)/2*MM;
+  const size = Math.max(b.x1-b.x0, b.y1-b.y0, b.z1-b.z0)*MM;
+  const ty = t ? (t.deck+t.H/2)*MM*0.8 : (b.z1/2)*MM*0.7;
+  const d = new THREE.Vector3(...(VIEWS[name]||VIEWS.iso)).normalize();
+  const c = G.cam;
+  c.target.set(cx, ty, cz);
+  c.radius = (size*1.25+1) * (name==="rear"||name==="front" ? 0.55 : 1);
+  c.phi = Math.max(0.01, Math.acos(d.y)); c.theta = Math.atan2(d.x, d.z);
+  const s = Math.max(8, size);
+  G.sun.position.set(cx+6, 14, cz+8); G.sun.target.position.set(cx, 0, cz);
+  Object.assign(G.sun.shadow.camera, {left:-s, right:s, top:s, bottom:-s, near:0.5, far:60});
+  G.sun.shadow.camera.updateProjectionMatrix();
+  updateCamera();
+}
+
+/* ------------------------------------------------------------------ 配置判定 */
+function evaluate(p, x, y, rot){
+  const t = G.truck;
+  if (!t) return {ok:true, z:p.z};
+  const [fl, fw] = footprint({...p, rot});
+  const deck = t.deck, others = G.pallets.filter(o=>o.id!==p.id);
+  const inside = x>=-1 && y>=-1 && x+fl<=t.L+1 && y+fw<=t.W+1;
+  if (inside) {
+    const under = others.filter(o => o.z > -deck+1 && rectOverlap(x,y,fl,fw,o.x,o.y,...footprint(o)));
+    let z = 0; for (const o of under) z = Math.max(z, o.z+o.h);
+    if (z > 0) {
+      const sup = under.filter(o => Math.abs(o.z+o.h-z) < 2);
+      if (sup.some(o=>!o.stackable)) return {ok:false, z, reason:"下段が上積み禁止です"};
+      let area = 0;
+      for (const o of sup) { const [ol,ow]=footprint(o); area += Math.max(0,Math.min(x+fl,o.x+ol)-Math.max(x,o.x))*Math.max(0,Math.min(y+fw,o.y+ow)-Math.max(y,o.y)); }
+      if (area < 0.9*fl*fw) return {ok:false, z, reason:"支持面積が不足しています（90%以上必要）"};
+    }
+    if (z + p.h > t.H + 1) return {ok:false, z, reason:`荷台高さを超過（${Math.round(z+p.h)} > ${t.H} mm）`};
+    return {ok:true, z};
+  }
+  if (rectOverlap(x,y,fl,fw,0,0,t.L,t.W,0)) return {ok:false, z:0, reason:"荷台からはみ出しています"};
+  const z = -deck;
+  for (const o of others) if (o.z < -deck+1 && rectOverlap(x,y,fl,fw,o.x,o.y,...footprint(o))) return {ok:false, z, reason:"仮置き場の荷物と重なっています"};
+  if (rectOverlap(x,y,fl,fw,-t.cabL-1000,-100,t.cabL+1000,t.W+200,0)) return {ok:false, z, reason:"キャビンと重なっています"};
+  return {ok:true, z};
+}
+function snapXY(p, x, y, rot){
+  const s = S.snap; if (s > 1) { x = Math.round(x/s)*s; y = Math.round(y/s)*s; }
+  const [fl, fw] = footprint({...p, rot}), th = 80, xs = [], ys = [];
+  if (G.truck) { xs.push(0, G.truck.L); ys.push(0, G.truck.W); }
+  for (const o of G.pallets) { if (o.id===p.id) continue; const [ol,ow]=footprint(o); xs.push(o.x, o.x+ol); ys.push(o.y, o.y+ow); }
+  let bx=null, by=null, dx=th, dy=th;
+  for (const e of xs) { if (Math.abs(x-e)<dx) {dx=Math.abs(x-e); bx=e;} if (Math.abs(x+fl-e)<dx) {dx=Math.abs(x+fl-e); bx=e-fl;} }
+  for (const e of ys) { if (Math.abs(y-e)<dy) {dy=Math.abs(y-e); by=e;} if (Math.abs(y+fw-e)<dy) {dy=Math.abs(y+fw-e); by=e-fw;} }
+  return [bx ?? x, by ?? y];
+}
+const hasOnTop = p => { const [fl,fw]=footprint(p); return G.pallets.some(o => o.id!==p.id && Math.abs(o.z-(p.z+p.h))<2 && rectOverlap(p.x,p.y,fl,fw,o.x,o.y,...footprint(o))); };
+
+/* ------------------------------------------------------------------ マウス / タッチ */
+function initControls(){
+  const cvs = G.renderer.domElement, ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+  const plane = new THREE.Plane(new THREE.Vector3(0,1,0), 0);
+  const pointers = new Map();
+  let drag = null, nav = null, pinch = null;
+  const tip = $("#tip");
+
+  const setRay = ev => { const r = cvs.getBoundingClientRect(); ptr.set((ev.clientX-r.left)/r.width*2-1, -(ev.clientY-r.top)/r.height*2+1); ray.setFromCamera(ptr, G.camera); };
+  const pick = () => {
+    const hits = ray.intersectObjects(G.groups.pallets.children, true).filter(h => !h.object.userData.isLabel);
+    return hits.length ? G.pallets.find(p => p.id === hits[0].object.userData.pid) || null : null;
+  };
+  const planePt = () => { const v = new THREE.Vector3(); return ray.ray.intersectPlane(plane, v) ? v : null; };
+
+  function moveDragTo(x, y){
+    const p = drag.p;
+    [x, y] = snapXY(p, x, y, p.rot);
+    const r = evaluate(p, x, y, p.rot);
+    p.x = x; p.y = y; p.z = r.z; drag.last = r;
+    placeObject(G.objects.get(p.id), p);
+    const [fl, fw] = footprint(p);
+    setHelper(G.ghost, x, y, r.z, fl, fw, p.h); G.ghost.material.color.set(r.ok ? 0x22aa44 : 0xdd3333); G.ghost.visible = true;
+    setHelper(G.sel, x, y, r.z, fl, fw, p.h);
+    $("#help").textContent = r.ok ? `x=${Math.round(x)}  y=${Math.round(y)}  z=${Math.round(Math.max(0,r.z))} mm` : `✖ ${r.reason}`;
+    requestRender();
+  }
+  G.moveDragTo = moveDragTo;
+  G.getDrag = () => drag;
+
+  cvs.addEventListener("contextmenu", e => e.preventDefault());
+  cvs.addEventListener("pointerdown", ev => {
+    stage.focus({preventScroll:true});
+    cvs.setPointerCapture(ev.pointerId);
+    pointers.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
+    tip.style.display = "none";
+    if (pointers.size === 2) {           // 2本指：ズーム + パン
+      if (drag) cancelDrag();
+      nav = null;
+      const [a, b] = [...pointers.values()];
+      pinch = {d:Math.hypot(a.x-b.x, a.y-b.y), mx:(a.x+b.x)/2, my:(a.y+b.y)/2};
+      return;
+    }
+    setRay(ev);
+    const p = ev.button === 0 ? pick() : null;
+    if (p && G.mode === "truck") {
+      S.selected = p.id; updateSelection(); renderSelInfo();
+      if (hasOnTop(p)) { toast("先に上段の荷物を移動してください"); nav = null; return; }
+      plane.constant = -G.deck*MM;
+      const v = planePt(); if (!v) return;
+      drag = {p, orig:{x:p.x, y:p.y, z:p.z, rot:p.rot}, offX:v.x/MM-p.x, offY:v.z/MM-p.y, last:null};
+      cvs.style.cursor = "grabbing";
+      return;
+    }
+    if (p && G.mode === "pallet") { S.packView = p.id; renderPackResult(); rebuild3D(true); return; }
+    nav = {mode: (ev.button === 2 || ev.button === 1 || ev.shiftKey) ? "pan" : "rot", x:ev.clientX, y:ev.clientY};
+  });
+  cvs.addEventListener("pointermove", ev => {
+    if (pointers.has(ev.pointerId)) pointers.set(ev.pointerId, {x:ev.clientX, y:ev.clientY});
+    if (pinch && pointers.size === 2) {
+      const [a, b] = [...pointers.values()];
+      const d = Math.hypot(a.x-b.x, a.y-b.y), mx = (a.x+b.x)/2, my = (a.y+b.y)/2;
+      G.cam.radius = Math.min(150, Math.max(1.5, G.cam.radius * pinch.d / Math.max(1, d)));
+      pan(mx-pinch.mx, my-pinch.my);
+      pinch = {d, mx, my}; updateCamera(); return;
+    }
+    if (drag) { setRay(ev); const v = planePt(); if (v) moveDragTo(v.x/MM-drag.offX, v.z/MM-drag.offY); return; }
+    if (nav) {
+      const dx = ev.clientX-nav.x, dy = ev.clientY-nav.y; nav.x = ev.clientX; nav.y = ev.clientY;
+      if (nav.mode === "rot") { G.cam.theta -= dx*0.008; G.cam.phi = Math.min(Math.PI/2-0.02, Math.max(0.01, G.cam.phi - dy*0.008)); }
+      else pan(dx, dy);
+      updateCamera(); return;
+    }
+    if (ev.pointerType !== "mouse") return;
+    setRay(ev);
+    const p = pick();
+    cvs.style.cursor = p ? (G.mode==="truck" ? "grab" : "pointer") : "";
+    if (p) {
+      const r = stage.getBoundingClientRect(), [fl, fw] = footprint(p);
+      const loaded = G.truck && p.z > -G.deck+1;
+      tip.textContent = `${p.label}${p.desc ? "  "+p.desc : ""}\n${Math.round(fl)}×${Math.round(fw)}×${Math.round(p.h)} mm  ${fmt(p.weight,1)} kg` +
+        (G.truck ? `\n${loaded ? `積載済み  x=${Math.round(p.x)} y=${Math.round(p.y)} z=${Math.round(p.z)}` : "仮置き場"}` : "") +
+        (p.stackable ? "" : "\n上積み禁止");
+      tip.style.left = Math.min(ev.clientX-r.left+14, r.width-240) + "px"; tip.style.top = (ev.clientY-r.top+14) + "px";
+      tip.style.display = "block";
+    } else tip.style.display = "none";
+  });
+  const up = ev => {
+    pointers.delete(ev.pointerId);
+    if (pointers.size < 2) pinch = null;
+    if (drag) {
+      const p = drag.p, moved = Math.abs(p.x-drag.orig.x)>0.5 || Math.abs(p.y-drag.orig.y)>0.5 || p.rot!==drag.orig.rot;
+      G.ghost.visible = false; cvs.style.cursor = "";
+      if (drag.last && !drag.last.ok) { Object.assign(p, drag.orig); placeObject(G.objects.get(p.id), p); toast("配置できません：" + drag.last.reason); }
+      else if (moved) { p.x = Math.round(p.x); p.y = Math.round(p.y); p.z = Math.round(p.z); planChanged(false); }
+      drag = null; renderHelp(); updateSelection();
+    }
+    nav = null;
+  };
+  cvs.addEventListener("pointerup", up);
+  cvs.addEventListener("pointercancel", up);
+  cvs.addEventListener("pointerleave", () => tip.style.display = "none");
+  cvs.addEventListener("wheel", ev => {
+    ev.preventDefault();
+    G.cam.radius = Math.min(150, Math.max(1.5, G.cam.radius * Math.exp(ev.deltaY*0.0012)));
+    updateCamera();
+  }, {passive:false});
+  function pan(dx, dy){
+    const k = G.cam.radius * 0.0016;
+    const right = new THREE.Vector3().setFromMatrixColumn(G.camera.matrix, 0);
+    const upv = new THREE.Vector3().setFromMatrixColumn(G.camera.matrix, 1);
+    G.cam.target.addScaledVector(right, -dx*k).addScaledVector(upv, dy*k);
+  }
+  function cancelDrag(){
+    if (!drag) return;
+    Object.assign(drag.p, drag.orig); placeObject(G.objects.get(drag.p.id), drag.p);
+    drag = null; G.ghost.visible = false; renderHelp(); updateSelection();
+  }
+  G.cancelDrag = cancelDrag;
+  stage.addEventListener("keydown", ev => {
+    if (ev.key === "r" || ev.key === "R") { rotateSelected(); ev.preventDefault(); }
+    if (ev.key === "Escape") cancelDrag();
+    if ((ev.key === "Delete" || ev.key === "Backspace") && G.mode === "truck") { unloadSelected(); ev.preventDefault(); }
+  });
+}
+
+function rotateSelected(){
+  if (!G || G.mode !== "truck") return;
+  const drag = G.getDrag();
+  const p = drag ? drag.p : G.pallets.find(q=>q.id===S.selected);
+  if (!p) { toast("先に荷物をクリックして選択してください"); return; }
+  if (drag) { p.rot = p.rot ? 0 : 1; const [fl,fw] = footprint(p); G.moveDragTo(p.x+(fw-fl)/2, p.y+(fl-fw)/2); return; }
+  if (hasOnTop(p)) { toast("先に上段の荷物を移動してください"); return; }
+  const nr = p.rot ? 0 : 1, [fl, fw] = footprint(p);
+  let x = p.x+(fl-fw)/2, y = p.y+(fw-fl)/2;
+  if (G.truck && p.z > -G.deck+1) { x = Math.max(0, Math.min(x, G.truck.L-fw)); y = Math.max(0, Math.min(y, G.truck.W-fl)); }
+  const r = evaluate(p, x, y, nr);
+  if (!r.ok) { toast("回転できません：" + r.reason); return; }
+  Object.assign(p, {x:Math.round(x), y:Math.round(y), z:Math.round(r.z), rot:nr});
+  planChanged(true);
+}
+
+/* ------------------------------------------------------------------ ツールバー / HUD */
+function toast(text, ok=false){
+  const t = $("#toast"); t.textContent = text; t.className = ok ? "ok" : ""; t.style.opacity = 1;
+  clearTimeout(toast.t); toast.t = setTimeout(()=>t.style.opacity = 0, 2200);
+}
+function renderHelp(){
+  $("#help").textContent = G && G.mode === "truck"
+    ? "左ドラッグで荷物を移動（荷台へ入れて積載／荷台の外へ出して降ろす）· R 回転 · Delete 降ろす · 空白を左ドラッグで視点回転 · 右ドラッグ/Shift でパン · ホイールでズーム"
+    : "パレットをクリックで個別表示 · 左ドラッグで視点回転 · 右ドラッグ/Shift でパン · ホイールでズーム";
+}
+function renderBar(){
+  const bar = $("#bar"), truckMode = G && G.mode === "truck";
+  const views = [["iso","3D"],["iso2","3D(右)"],["top","上面"],["side","側面"],["rear","後面"],["front","前面"]];
+  bar.innerHTML =
+    `<button class="mode-pill" disabled>${truckMode ? "🚚 " + esc(S.truck.name) : "📦 パレット積付"}</button>` +
+    views.map(([k,t])=>`<button data-view="${k}">${t}</button>`).join("") +
+    (truckMode ? `<button data-act="walls" class="${S.showWalls?"on":""}">荷台壁</button><button data-act="rot">回転 (R)</button>
+      <select data-act="snap" style="width:auto;background:var(--glass);font-size:12px;padding:4px 6px">
+        ${[[1,"吸着なし"],[10,"吸着 10mm"],[50,"吸着 50mm"],[100,"吸着 100mm"]].map(([v,t])=>`<option value="${v}" ${S.snap==v?"selected":""}>${t}</option>`).join("")}
+      </select>` : "") +
+    `<button data-act="labels" class="${S.labels?"on":""}">番号</button>`;
+  renderHelp();
+}
+$("#bar").addEventListener("click", ev => {
+  const b = ev.target.closest("button"); if (!b || !G) return;
+  if (b.dataset.view) setView(b.dataset.view);
+  const a = b.dataset.act;
+  if (a === "walls") { S.showWalls = !S.showWalls; G.groups.walls.visible = S.showWalls; b.classList.toggle("on", S.showWalls); requestRender(); save(); }
+  if (a === "labels") { S.labels = !S.labels; for (const o of G.objects.values()) o.userData.label.visible = S.labels; b.classList.toggle("on", S.labels); requestRender(); save(); }
+  if (a === "rot") rotateSelected();
+});
+$("#bar").addEventListener("change", ev => { if (ev.target.dataset.act === "snap") { S.snap = +ev.target.value; save(); } });
+
+function meter(pct, color){ return `<div class="meter"><i style="width:${Math.min(100,pct).toFixed(1)}%;background:${pct>100?"var(--bad)":color}"></i></div>`; }
+function renderHud(){
+  const hud = $("#hud"), warns = $("#warns");
+  if (S.tab === "pallet") {
+    warns.innerHTML = "";
+    if (!S.packed.length) { hud.innerHTML = `<div class="card"><div class="t">パレット積付</div><div class="s">左の荷物リストを設定して「積付計算」を押してください</div></div>`; return; }
+    const n = S.packed.reduce((s,p)=>s+p.count,0), w = S.packed.reduce((s,p)=>s+p.weight,0);
+    const sups = new Set(S.packed.map(p=>p.sup).filter(Boolean));
+    hud.innerHTML = `<div class="card"><div class="t">パレット枚数</div><div class="v">${S.packed.length} 枚</div><div class="s">箱数 ${fmt(n)} 箱</div></div>
+      <div class="card"><div class="t">総重量</div><div class="v">${fmt(w)} kg</div><div class="s">パレット自重込み</div></div>
+      <div class="card"><div class="t">仕入先</div><div class="v">${sups.size} 社</div><div class="s">${S.split ? "仕入先ごとに分割" : "混載あり"}</div></div>`;
+    return;
+  }
+  const t = S.truck, s = computeStats(t, S.plan);
+  let h = `<div class="card"><div class="t">積載荷物</div><div class="v">${s.loaded.length} 個</div><div class="s">箱数 ${fmt(s.boxes)} · 仮置き ${s.staged.length}</div></div>
+    <div class="card"><div class="t">積載重量</div><div class="v">${fmt(s.weight)} kg</div><div class="s">${s.payloadPct.toFixed(1)}% / ${fmt(t.kg)} kg</div>${meter(s.payloadPct,"var(--ok)")}</div>
+    <div class="card"><div class="t">床面積率</div><div class="v">${s.floorPct.toFixed(1)}%</div><div class="s">使用長さ ${fmt(s.usedLen)} / ${fmt(t.L)}</div>${meter(s.floorPct,"var(--cobalt)")}</div>
+    <div class="card"><div class="t">容積率</div><div class="v">${s.volPct.toFixed(1)}%</div><div class="s">${(t.L/1000).toFixed(2)}×${(t.W/1000).toFixed(2)}×${(t.H/1000).toFixed(2)} m</div>${meter(s.volPct,"#8a5cd6")}</div>`;
+  if (s.cog) h += `<div class="card"><div class="t">貨物重心</div><div class="v">x ${fmt(s.cog[0])}</div><div class="s">y ${fmt(s.cog[1])}（中心 ${fmt(t.W/2)}） z ${fmt(s.cog[2])}</div></div>`;
+  if (s.axle) h += `<div class="card"><div class="t">軸重配分（貨物・参考）</div><div class="v">前 ${s.axle.fp.toFixed(0)}% / 後 ${s.axle.rp.toFixed(0)}%</div><div class="s">前 ${fmt(s.axle.front)} kg · 後 ${fmt(s.axle.rear)} kg</div></div>`;
+  hud.innerHTML = h;
+  warns.innerHTML = s.warnings.length ? s.warnings.map(w=>`<div>⚠ ${esc(w)}</div>`).join("")
+    : (s.loaded.length ? `<div class="good">✔ 過積載・干渉・偏荷重なし</div>` : "");
+  renderOrderList(s);
+}
+
+/* =====================================================================
+ * ① 荷姿・パレット積付
+ * ===================================================================== */
+function fillSelect(sel, opts, value){ sel.innerHTML = opts.map(([v,t])=>`<option value="${esc(v)}">${esc(t)}</option>`).join(""); sel.value = value; }
+const supByCode = code => S.suppliers.find(s=>s.code===code);
+
+const PF = {l:"p-l", w:"p-w", h:"p-h", kg:"p-kg", maxKg:"p-maxkg", maxH:"p-maxh", oh:"p-oh"};
+function renderPalletForm(){
+  fillSelect($("#p-preset"), [...Object.keys(PALLET_PRESETS).map(k=>[k,k]), ["custom","カスタム"]], S.pallet.preset);
+  for (const [k, id] of Object.entries(PF)) $("#"+id).value = S.pallet[k];
+  $("#p-method").value = S.method; $("#p-sup").value = S.support; $("#p-sup-v").textContent = Math.round(S.support*100)+"%";
+  $("#p-split").checked = S.split;
+}
+$("#p-preset").addEventListener("change", e => {
+  S.pallet.preset = e.target.value;
+  const p = PALLET_PRESETS[e.target.value];
+  if (p) Object.assign(S.pallet, {l:p.l, w:p.w, h:p.h, kg:p.kg});
+  renderPalletForm(); save();
+});
+for (const [k, id] of Object.entries(PF)) $("#"+id).addEventListener("change", e => {
+  S.pallet[k] = Math.max(0, +e.target.value || 0);
+  if (["l","w","h"].includes(k)) { S.pallet.preset = "custom"; $("#p-preset").value = "custom"; }
+  save();
+});
+$("#p-method").addEventListener("change", e => { S.method = e.target.value; save(); });
+$("#p-sup").addEventListener("input", e => { S.support = +e.target.value; $("#p-sup-v").textContent = Math.round(S.support*100)+"%"; save(); });
+$("#p-split").addEventListener("change", e => { S.split = e.target.checked; save(); });
+
+// ---- 仕入先からワンタッチ追加
+function renderQuick(){
+  const sel = $("#q-sup");
+  if (!supByCode(S.qSup) && S.suppliers.length) S.qSup = S.suppliers[0].code;
+  fillSelect(sel, S.suppliers.map(s=>[s.code, `${s.code}  ${s.name}`]), S.qSup);
+  const sup = supByCode(S.qSup), el = $("#q-parts");
+  if (!sup) { el.innerHTML = `<p class="hint">仕入先が登録されていません。③ 仕入先マスタで登録してください。</p>`; return; }
+  if (!sup.parts.length) { el.innerHTML = `<p class="hint">この仕入先には部品が登録されていません。</p>`; return; }
+  el.innerHTML = `<table><tr><th>品番 / 品名</th><th>荷姿</th><th>収容数</th><th style="width:78px">
+      <select id="q-unit" style="padding:2px 4px;font-size:11px"><option value="box">箱数</option><option value="pcs">部品数</option></select></th></tr>` +
+    sup.parts.map((p,i)=>`<tr><td><b>${esc(p.no)}</b><br><span style="color:var(--ink-2)">${esc(p.name)}</span></td>
+      <td><span class="tag g">${esc(p.cont)}</span><br><span style="font-size:11px;color:var(--ink-3)">${p.l}×${p.w}×${p.h}</span></td>
+      <td>${p.snp}</td><td><input type="number" min="0" data-qi="${i}" placeholder="0"></td></tr>`).join("") +
+    `</table><div class="row mt"><span class="hint" id="q-calc" style="flex:1"></span><button class="pri sm" id="q-add">荷物リストに追加</button></div>`;
+  $("#q-unit").value = S.qUnit;
+}
+function quickCalc(){
+  const sup = supByCode(S.qSup); if (!sup) return [];
+  return $$("#q-parts input[data-qi]").map(inp => {
+    const p = sup.parts[+inp.dataset.qi], n = Math.max(0, +inp.value || 0);
+    const boxes = S.qUnit === "pcs" ? Math.ceil(n / Math.max(1, p.snp)) : Math.floor(n);
+    return {p, boxes};
+  }).filter(x=>x.boxes>0);
+}
+$("#q-sup").addEventListener("change", e => { S.qSup = e.target.value; renderQuick(); save(); });
+$("#q-parts").addEventListener("input", () => {
+  const c = quickCalc();
+  $("#q-calc").textContent = c.length ? `${c.length} 品番 / ${c.reduce((s,x)=>s+x.boxes,0)} 箱 / ${fmt(c.reduce((s,x)=>s+x.boxes*(x.p.unitKg*x.p.snp+(x.p.tare||0)),0),1)} kg` : "";
+});
+$("#q-parts").addEventListener("change", e => { if (e.target.id === "q-unit") { S.qUnit = e.target.value; save(); $("#q-parts").dispatchEvent(new Event("input")); } });
+$("#q-parts").addEventListener("click", e => {
+  if (e.target.id !== "q-add") return;
+  const sup = supByCode(S.qSup), c = quickCalc();
+  if (!c.length) { toast("数量を入力してください"); return; }
+  for (const {p, boxes} of c) {
+    const ex = S.boxes.find(b => b.sup === sup.code && b.no === p.no);
+    if (ex) ex.qty += boxes;
+    else S.boxes.push(boxFromPart(sup, p, boxes, PALETTE[S.boxes.length % PALETTE.length]));
+  }
+  renderQuick(); renderBoxes(); save();
+  toast(`${sup.name} の ${c.length} 品番を追加しました`, true);
+});
+
+// ---- 荷物リスト
+function renderBoxes(){
+  $("#box-list").innerHTML = S.boxes.map((b, i) => `
+    <div class="bt" data-i="${i}">
+      <div class="top"><input type="color" data-k="color" value="${b.color||PALETTE[i%PALETTE.length]}">
+        ${b.sup ? `<span class="tag" title="${esc(b.supName)}">${esc(b.sup)}</span>` : ""}
+        <input type="text" data-k="name" value="${esc(b.name)}" title="${esc(b.no)}">
+        <select data-k="cont" style="width:96px;flex:none;font-size:11px;padding:4px">${CONTAINERS.map(([v])=>`<option ${v===b.cont?"selected":""}>${esc(v)}</option>`).join("")}</select>
+        <button class="icon-btn" data-del="${i}" title="削除">✕</button></div>
+      ${b.no ? `<div class="hint" style="margin:-2px 0 4px">品番 ${esc(b.no)} · ${esc(b.supName||"")}${b.snp ? ` · 収容数 ${b.snp}` : ""}</div>` : ""}
+      <div class="dims">
+        ${[["l","長さ"],["w","幅"],["h","高さ"],["kg","kg/箱"],["qty","箱数"],["maxStack","段積上限"]].map(([k,t])=>`<label class="f"><span>${t}</span><input type="number" min="0" data-k="${k}" value="${b[k] ?? 0}"></label>`).join("")}
+      </div>
+      <div class="flags">
+        <label class="ck"><input type="checkbox" data-k="rot" ${b.rot?"checked":""}> 回転可</label>
+        <label class="ck"><input type="checkbox" data-k="up" ${b.up?"checked":""}> 天地無用</label>
+        <label class="ck"><input type="checkbox" data-k="stk" ${b.stk?"checked":""}> 上積み可</label>
+        <span class="calc">${fmt(b.qty*b.kg,1)} kg</span>
+      </div>
+    </div>`).join("") || `<p class="hint">荷物がありません。上の「仕入先から追加」または「手入力で追加」で追加してください。</p>`;
+}
+$("#box-list").addEventListener("change", e => {
+  const card = e.target.closest(".bt"), k = e.target.dataset.k; if (!card || !k) return;
+  const b = S.boxes[+card.dataset.i];
+  b[k] = e.target.type === "checkbox" ? e.target.checked : e.target.type === "number" ? Math.max(0, +e.target.value || 0) : e.target.value;
+  if (k === "qty" || k === "maxStack") b[k] = Math.floor(b[k]);
+  if (k === "cont" && TP[b.cont]) { Object.assign(b, {l:TP[b.cont].l, w:TP[b.cont].w, h:TP[b.cont].h}); }
+  if (["cont","qty","kg"].includes(k)) renderBoxes();
+  save();
+});
+$("#box-list").addEventListener("click", e => {
+  const d = e.target.closest("[data-del]"); if (!d) return;
+  S.boxes.splice(+d.dataset.del, 1); renderBoxes(); save();
+});
+$("#b-add").onclick = () => {
+  const i = S.boxes.length;
+  S.boxes.push({sup:"", supName:"", no:"", name:`荷物${i+1}`, cont:"TP342", l:503, w:335, h:195, kg:10, qty:10, maxStack:0, rot:true, up:true, stk:true, color:PALETTE[i%PALETTE.length]});
+  renderBoxes(); save();
+};
+$("#b-clear").onclick = () => { if (!S.boxes.length || confirm("荷物リストをすべて削除しますか？")) { S.boxes = []; renderBoxes(); save(); } };
+
+// ---- 積付計算
+$("#b-pack").onclick = () => {
+  const bts = S.boxes.filter(b => b.l>0 && b.w>0 && b.h>0 && b.qty>0);
+  if (!bts.length) { $("#pack-result").innerHTML = `<div class="msg bad">荷物を追加してください（寸法・箱数は 0 より大きく）</div>`; return; }
+  const btn = $("#b-pack"); btn.disabled = true; btn.textContent = "計算中…";
+  setTimeout(() => {
+    const groups = new Map();
+    for (const b of bts) {
+      const k = S.split ? (b.sup || "") : "*";
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(b);
+    }
+    const all = [], left = [];
+    for (const [k, g] of groups) {
+      const {pallets, leftover} = packPallets(S.pallet, g, S.method, S.support);
+      const supName = k === "*" ? "" : (g[0].supName || (k ? k : "手入力"));
+      for (const p of pallets) {
+        p.sup = k === "*" ? "" : k; p.supName = supName;
+        if (supName) p.desc = `${supName}：${p.desc}`;
+        all.push(p);
+      }
+      left.push(...leftover);
+    }
+    all.forEach((p, i) => { p.id = p.label = `P${i+1}`; });
+    S.packed = all; S.packView = all.length === 1 ? all[0].id : "__all__";
+    S.lastLeftover = left; S.lastNeed = bts.reduce((s,b)=>s+b.qty,0);
+    btn.disabled = false; btn.textContent = "積付計算";
+    renderPackResult(); rebuild3D(true); renderHud(); save();
+  }, 20);
+};
+
+function renderPackResult(){
+  const el = $("#pack-result"), P = S.packed;
+  if (!P.length) { el.innerHTML = ""; return; }
+  const total = P.reduce((s,p)=>s+p.count,0);
+  let h = `<div style="margin:10px 0 6px">必要パレット <span class="big">${P.length}</span> 枚 ／ ${fmt(total)}/${fmt(S.lastNeed ?? total)} 箱 ／ 総重量 ${fmt(P.reduce((s,p)=>s+p.weight,0),1)} kg</div>`;
+  if (S.lastLeftover && S.lastLeftover.length)
+    h += `<div class="msg bad">⚠ パレットに積めない荷物があります（寸法・重量がパレット条件を超過）：${S.lastLeftover.map(([n,c])=>`${esc(n)}×${c}`).join("、")}</div>`;
+  h += `<table><tr><th>No.</th><th>仕入先</th><th>箱数</th><th>重量kg</th><th>外形 mm</th><th>容積率</th></tr>
+    <tr class="click ${S.packView==="__all__"?"sel":""}" data-view="__all__"><td colspan="6">すべてのパレットを並べて表示</td></tr>` +
+    P.map(p => `<tr class="click ${S.packView===p.id?"sel":""}" data-view="${p.id}" title="${esc(p.desc)}"><td><b>${p.id}</b>${p.stackable?"":" <span style='color:var(--bad)' title='上積み禁止'>✖</span>"}</td>
+      <td>${esc(p.sup||"混載")}</td><td>${p.count}</td><td>${fmt(p.weight,1)}</td>
+      <td>${Math.round(p.l)}×${Math.round(p.w)}×${Math.round(p.h)}</td><td>${(p.util*100).toFixed(1)}%</td></tr>`).join("") + `</table>`;
+  const sel = P.find(p=>p.id===S.packView);
+  if (sel) h += `<div class="selbox">${sel.id}：${esc(sel.desc)}</div>`;
+  h += `<div class="row mt"><select id="send-mode" style="width:auto"><option value="replace">仮置き場を置き換え</option><option value="append">仮置き場に追加</option></select>
+    <button class="ok" id="b-send" style="flex:1">トラックへ送る →</button></div>`;
+  el.innerHTML = h;
+}
+$("#pack-result").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-view]");
+  if (tr) { S.packView = tr.dataset.view; renderPackResult(); rebuild3D(true); save(); }
+  if (e.target.id === "b-send") sendToTruck($("#send-mode").value);
+});
+
+function nextId(prefix="P"){
+  const ids = new Set(S.plan.map(p=>p.id));
+  while (ids.has(prefix + S.nextId)) S.nextId++;
+  return prefix + (S.nextId++);
+}
+function sendToTruck(mode){
+  if (mode === "replace") { S.plan = []; S.nextId = 1; S.selected = ""; }
+  const add = S.packed.map(p => { const id = nextId("P"); return {...clone(p), id, label:id}; });
+  setPlan(S.plan, add);
+  switchTab("truck");
+  toast(`${add.length} 枚のパレットを仮置き場に送りました。「自動積載」またはドラッグで荷台へ`, true);
+}
+
+/* =====================================================================
+ * ② トラック積載
+ * ===================================================================== */
+const allTrucks = () => ({...TRUCK_PRESETS, ...Object.fromEntries(Object.entries(S.custom).map(([k,v])=>["★ "+k, v]))});
+const TF = {L:"t-l", W:"t-w", H:"t-h", kg:"t-kg", deck:"t-deck"};
+function renderTruckForm(){
+  fillSelect($("#t-preset"), Object.keys(allTrucks()).map(k=>[k,k]), S.truckKey);
+  for (const [k, id] of Object.entries(TF)) $("#"+id).value = S.truck[k];
+  $("#t-body").value = S.truck.body;
+  $("#b-del-truck").hidden = !S.truckKey.startsWith("★ ");
+  $("#o-rot").checked = S.opts.rot; $("#o-stack").checked = S.opts.stack; $("#o-gap").value = S.opts.gap; $("#o-order").value = S.opts.order;
+}
+function applyTruck(t){
+  const old = S.truck;
+  S.truck = clone(t);
+  const keep = [], out = [];
+  for (const p of S.plan) {
+    const wasIn = p.z > -old.deck+1;
+    if (wasIn && inTruck(S.truck, p) && p.z+p.h <= S.truck.H+1) keep.push(p); else out.push(p);
+  }
+  setPlan(keep, out);
+  renderTruckForm(); renderCatalog();
+  rebuild3D(true);
+}
+$("#t-preset").addEventListener("change", e => { S.truckKey = e.target.value; applyTruck(allTrucks()[S.truckKey]); });
+for (const [k, id] of Object.entries(TF)) $("#"+id).addEventListener("change", e => { const t = {...S.truck}; t[k] = Math.max(0, +e.target.value||0); applyTruck(t); });
+$("#t-body").addEventListener("change", e => applyTruck({...S.truck, body:e.target.value}));
+$("#b-save-truck").onclick = () => {
+  const name = $("#t-name").value.trim();
+  if (!name) { toast("カスタム車種名を入力してください"); return; }
+  S.custom[name] = {...S.truck, name}; S.truckKey = "★ " + name; S.truck.name = name;
+  renderTruckForm(); renderCatalog(); renderBar(); save(); toast(`カスタム車種「${name}」を保存しました`, true);
+};
+$("#b-del-truck").onclick = () => {
+  const name = S.truckKey.slice(2);
+  if (!confirm(`カスタム車種「${name}」を削除しますか？`)) return;
+  delete S.custom[name]; S.truckKey = "4t ワイド (ウイング)"; applyTruck(TRUCK_PRESETS[S.truckKey]);
+};
+$("#o-rot").onchange = e => { S.opts.rot = e.target.checked; save(); };
+$("#o-stack").onchange = e => { S.opts.stack = e.target.checked; save(); };
+$("#o-gap").onchange = e => { S.opts.gap = Math.max(0, +e.target.value||0); save(); };
+$("#o-order").onchange = e => { S.opts.order = e.target.value; save(); };
+
+/** トラック横の地面（仮置き場）に並べる */
+function layoutStaging(items){
+  const t = S.truck, gap = 250, rowLen = Math.max(t.L, 6000);
+  let x = 0, y = t.W + 900, rowW = 0;
+  return items.map(p => {
+    p = {...p, rot:0, z:-t.deck};
+    if (x > 0 && x + p.l > rowLen) { x = 0; y += rowW + gap; rowW = 0; }
+    p.x = x; p.y = y; x += p.l + gap; rowW = Math.max(rowW, p.w);
+    return p;
+  });
+}
+function setPlan(inList, toStage){
+  const loaded = inList.filter(p=>inTruck(S.truck,p)), staged = inList.filter(p=>!inTruck(S.truck,p));
+  S.plan = loaded.concat(layoutStaging(staged.concat(toStage)));
+  if (!S.plan.find(p=>p.id===S.selected)) S.selected = "";
+  planChanged(true);
+}
+function planChanged(rebuild){
+  if (G && G.mode === "truck" && rebuild) buildPallets();
+  else if (G && G.mode === "truck") updateSelection();
+  renderHud(); renderSelInfo(); save();
+}
+
+$("#b-auto").onclick = () => {
+  if (!S.plan.length) { toast("仮置き場に荷物がありません。① で積付計算してトラックへ送るか、単品貨物を追加してください"); return; }
+  const {loaded, rest} = arrangeInTruck(S.truck, S.plan, S.opts);
+  setPlan(loaded, rest);
+  rest.length ? toast(`${loaded.length} 個を積載、${rest.length} 個は積めません（スペースまたは重量超過）`) : toast(`全 ${loaded.length} 個を積載しました`, true);
+};
+$("#b-unload-all").onclick = () => setPlan([], S.plan);
+const selected = () => S.plan.find(p=>p.id===S.selected);
+function unloadSelected(){
+  const p = selected(); if (!p) { toast("3D 画面で荷物をクリックして選択してください"); return; }
+  if (!inTruck(S.truck, p)) return;
+  if (G && hasOnTop(p)) { toast("先に上段の荷物を降ろしてください"); return; }
+  setPlan(S.plan.filter(o=>o.id!==p.id), [p]);
+}
+$("#b-unload").onclick = unloadSelected;
+$("#b-rot").onclick = rotateSelected;
+$("#b-dup").onclick = () => { const p = selected(); if (!p) { toast("荷物を選択してください"); return; } const id = nextId(p.id[0]==="C"?"C":"P"); setPlan(S.plan, [{...clone(p), id, label:id}]); };
+$("#b-del").onclick = () => {
+  const p = selected(); if (!p) { toast("荷物を選択してください"); return; }
+  if (G && inTruck(S.truck,p) && hasOnTop(p)) { toast("先に上段の荷物を移動してください"); return; }
+  S.plan = S.plan.filter(o=>o.id!==p.id); S.selected = ""; planChanged(true);
+};
+$("#b-cargo").onclick = () => {
+  const n = Math.max(1, Math.floor(+$("#c-n").value||1)), name = $("#c-name").value || "貨物";
+  const l = +$("#c-l").value, w = +$("#c-w").value, h = +$("#c-h").value, kg = +$("#c-kg").value, color = $("#c-color").value;
+  if (!(l>0 && w>0 && h>0)) { toast("正しい寸法を入力してください"); return; }
+  const add = [];
+  for (let i=0;i<n;i++) { const id = nextId("C"); add.push({id, label:id, desc:name, sup:"", supName:"", l, w, h, base:null, boxes:[[0,0,0,l,w,h,0]], colors:[color], names:[name], boxWeights:[kg], baseWeight:0, weight:kg, stackable:$("#c-stk").checked, count:1, x:0, y:0, z:0, rot:0}); }
+  setPlan(S.plan, add); toast(`${n} 個を仮置き場に追加しました`, true);
+};
+
+function renderSelInfo(){
+  const p = selected(), el = $("#sel-info");
+  if (!p) { el.textContent = "未選択"; return; }
+  const [fl, fw] = footprint(p), loaded = inTruck(S.truck, p);
+  el.innerHTML = `<b>${esc(p.label)}</b> ${esc(p.desc||"")}<br>${Math.round(fl)}×${Math.round(fw)}×${Math.round(p.h)} mm · ${fmt(p.weight,1)} kg${p.stackable?"":" · 上積み禁止"}<br>` +
+    (loaded ? `積載済み：x=${p.x} y=${p.y} z=${p.z}${p.rot?" · 回転":""}` : "仮置き場");
+}
+function renderOrderList(s){
+  const el = $("#order-list");
+  if (!s.order.length) { el.innerHTML = "まだ積載されていません"; el.className = "hint"; return; }
+  el.className = "";
+  el.innerHTML = `<table><tr><th>順</th><th>番号</th><th>仕入先</th><th>寸法 mm</th><th>kg</th><th>位置 x,y,z</th></tr>` +
+    s.order.map((p,i)=>{ const [fl,fw]=footprint(p); return `<tr class="click ${p.id===S.selected?"sel":""}" data-id="${p.id}" title="${esc(p.desc||"")}"><td>${i+1}</td><td><b>${esc(p.label)}</b></td><td>${esc(p.sup||"-")}</td><td>${Math.round(fl)}×${Math.round(fw)}×${Math.round(p.h)}</td><td>${fmt(p.weight)}</td><td>${p.x}, ${p.y}, ${p.z}</td></tr>`; }).join("") + `</table>`;
+}
+$("#order-list").addEventListener("click", e => { const tr = e.target.closest("tr[data-id]"); if (tr) { S.selected = tr.dataset.id; updateSelection(); renderSelInfo(); renderOrderList(computeStats(S.truck, S.plan)); } });
+
+// ---- ファイル入出力
+function download(name, text, type){ const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([text], {type})); a.download = name; a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 1000); }
+const today = () => new Date().toISOString().slice(0,10);
+$("#b-export").onclick = () => download(`積載計画_${today()}.json`, JSON.stringify({version:1, truck:S.truck, truckKey:S.truckKey, custom:S.custom, plan:S.plan, pallet:S.pallet, boxes:S.boxes}, null, 1), "application/json");
+$("#b-import").onclick = () => $("#f-import").click();
+$("#f-import").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const d = JSON.parse(await f.text());
+    if (!d.truck || !Array.isArray(d.plan)) throw new Error("ファイル形式が正しくありません");
+    Object.assign(S.custom, d.custom || {});
+    if (d.pallet) S.pallet = d.pallet;
+    if (d.boxes) S.boxes = d.boxes;
+    S.truck = d.truck;
+    if (allTrucks()[d.truckKey]) S.truckKey = d.truckKey; else { S.custom[d.truck.name] = d.truck; S.truckKey = "★ " + d.truck.name; }
+    S.plan = d.plan; S.selected = "";
+    renderAll(); rebuild3D(true); toast("積載計画を読み込みました", true);
+  } catch (err) { toast("読込に失敗しました：" + err.message); }
+  e.target.value = "";
+};
+const csvCell = v => `"${String(v ?? "").replace(/"/g,'""')}"`;
+const toCsv = rows => "﻿" + rows.map(r=>r.map(csvCell).join(",")).join("\r\n");
+$("#b-csv").onclick = () => {
+  const s = computeStats(S.truck, S.plan);
+  const rows = [["積込順","番号","仕入先コード","仕入先名","内容","長さmm","幅mm","高さmm","重量kg","x","y","z","回転"]].concat(
+    s.order.map((p,i)=>{ const [fl,fw]=footprint(p); return [i+1, p.label, p.sup||"", p.supName||"", p.desc||"", fl, fw, p.h, p.weight, p.x, p.y, p.z, p.rot?"○":""]; }));
+  download(`積込リスト_${today()}.csv`, toCsv(rows), "text/csv");
+};
+$("#b-shot").onclick = () => { if (!G) return; G.renderer.render(G.scene, G.camera); const a = document.createElement("a"); a.href = G.renderer.domElement.toDataURL("image/png"); a.download = `積載図_${today()}.png`; a.click(); };
+
+/* =====================================================================
+ * ③ 仕入先マスタ
+ * ===================================================================== */
+function renderMaster(){
+  if (!supByCode(S.mSup) && S.suppliers.length) S.mSup = S.suppliers[0].code;
+  fillSelect($("#m-sup"), S.suppliers.map(s=>[s.code, `${s.code}  ${s.name}（${s.parts.length} 品番）`]), S.mSup);
+  const sup = supByCode(S.mSup);
+  $("#m-del").disabled = !sup; $("#m-add-part").disabled = !sup;
+  if (!sup) { $("#m-form").innerHTML = `<p class="hint">「新規仕入先」で登録してください。</p>`; $("#m-parts").innerHTML = ""; renderTpTable(); return; }
+  $("#m-form").innerHTML = `<div class="grid g4" style="margin-top:6px">
+    <label class="f"><span>仕入先コード</span><input type="text" data-s="code" value="${esc(sup.code)}"></label>
+    <label class="f"><span>仕入先名</span><input type="text" data-s="name" value="${esc(sup.name)}"></label>
+    <label class="f"><span>所在地・工場</span><input type="text" data-s="site" value="${esc(sup.site||"")}"></label>
+    <label class="f"><span>備考</span><input type="text" data-s="note" value="${esc(sup.note||"")}"></label></div>`;
+  $("#m-parts").innerHTML = sup.parts.map((p, i) => `
+    <div class="bt part" data-pi="${i}">
+      <div class="top">
+        <input type="text" data-k="no" value="${esc(p.no)}" placeholder="品番" style="width:40%">
+        <input type="text" data-k="name" value="${esc(p.name)}" placeholder="品名">
+        <button class="icon-btn" data-pdel="${i}" title="削除">✕</button></div>
+      <div class="dims">
+        <label class="f" style="grid-column:1 / -1"><span>容器</span><select data-k="cont">${CONTAINERS.map(([v,t])=>`<option value="${esc(v)}" ${v===p.cont?"selected":""}>${esc(t)}</option>`).join("")}</select></label>
+        ${[["l","長さ"],["w","幅"],["h","高さ"],["snp","収容数"],["unitKg","単重kg"],["tare","風袋kg"],["maxStack","段積上限"]].map(([k,t])=>`<label class="f"><span>${t}</span><input type="number" min="0" step="any" data-k="${k}" value="${p[k] ?? 0}"></label>`).join("")}
+      </div>
+      <div class="flags">
+        <label class="ck"><input type="checkbox" data-k="rot" ${p.rot?"checked":""}> 回転可</label>
+        <label class="ck"><input type="checkbox" data-k="up" ${p.up?"checked":""}> 天地無用</label>
+        <label class="ck"><input type="checkbox" data-k="stk" ${p.stk?"checked":""}> 上積み可</label>
+        <span class="calc">1 箱 ${fmt(p.unitKg*p.snp + (p.tare||0), 2)} kg</span>
+      </div>
+    </div>`).join("") || `<p class="hint">部品が登録されていません。</p>`;
+  renderTpTable();
+}
+function renderTpTable(){
+  $("#tp-table").innerHTML = `<table><tr><th>型式</th><th>外寸 長×幅×高 mm</th><th>容量</th><th>T11 1段あたり</th></tr>` +
+    TP_BOXES.map(b => `<tr><td><b>${b.key}</b></td><td>${b.l}×${b.w}×${b.h}</td><td>${b.cap||"-"}</td><td>${best2d(1100,1100,b.l,b.w,true).length} 箱</td></tr>`).join("") + `</table>`;
+}
+$("#m-sup").addEventListener("change", e => { S.mSup = e.target.value; renderMaster(); save(); });
+$("#m-form").addEventListener("change", e => {
+  const k = e.target.dataset.s, sup = supByCode(S.mSup); if (!k || !sup) return;
+  const v = e.target.value.trim();
+  if (k === "code") {
+    if (!v || (v !== sup.code && supByCode(v))) { toast("仕入先コードが空か、既に使われています"); e.target.value = sup.code; return; }
+    for (const b of S.boxes) if (b.sup === sup.code) b.sup = v;
+    if (S.qSup === sup.code) S.qSup = v;
+    sup.code = v; S.mSup = v;
+  } else sup[k] = v;
+  if (k === "name") for (const b of S.boxes) if (b.sup === sup.code) b.supName = v;
+  renderMaster(); renderQuick(); renderBoxes(); save();
+});
+$("#m-parts").addEventListener("change", e => {
+  const card = e.target.closest(".part"), k = e.target.dataset.k, sup = supByCode(S.mSup); if (!card || !k || !sup) return;
+  const p = sup.parts[+card.dataset.pi];
+  p[k] = e.target.type === "checkbox" ? e.target.checked : e.target.type === "number" ? Math.max(0, +e.target.value || 0) : e.target.value;
+  if (k === "snp" || k === "maxStack") p[k] = Math.floor(p[k]);
+  if (k === "cont" && TP[p.cont]) Object.assign(p, {l:TP[p.cont].l, w:TP[p.cont].w, h:TP[p.cont].h});
+  renderMaster(); renderQuick(); save();
+});
+$("#m-parts").addEventListener("click", e => {
+  const d = e.target.closest("[data-pdel]"), sup = supByCode(S.mSup); if (!d || !sup) return;
+  const p = sup.parts[+d.dataset.pdel];
+  if (!confirm(`品番 ${p.no} を削除しますか？`)) return;
+  sup.parts.splice(+d.dataset.pdel, 1); renderMaster(); renderQuick(); save();
+});
+$("#m-add-part").onclick = () => { const sup = supByCode(S.mSup); if (!sup) return; sup.parts.push(P_("", "新規部品", "TP342", 10, 0.5)); renderMaster(); renderQuick(); save(); };
+$("#m-new").onclick = () => {
+  let n = S.suppliers.length + 1, code;
+  do { code = "S" + String(9000 + n++); } while (supByCode(code));
+  S.suppliers.push({code, name:"新規仕入先", site:"", note:"", parts:[]});
+  S.mSup = code; renderMaster(); renderQuick(); save();
+};
+$("#m-del").onclick = () => {
+  const sup = supByCode(S.mSup); if (!sup) return;
+  if (!confirm(`仕入先「${sup.code} ${sup.name}」と登録部品 ${sup.parts.length} 件を削除しますか？`)) return;
+  S.suppliers = S.suppliers.filter(s=>s!==sup); S.mSup = S.suppliers[0]?.code || ""; renderMaster(); renderQuick(); save();
+};
+$("#m-sample").onclick = () => {
+  if (!confirm("サンプル仕入先（S1001〜S1005）を初期状態に戻しますか？（他の仕入先はそのまま残ります）")) return;
+  for (const smp of clone(SAMPLE_SUPPLIERS)) {
+    const i = S.suppliers.findIndex(s=>s.code===smp.code);
+    if (i >= 0) S.suppliers[i] = smp; else S.suppliers.push(smp);
+  }
+  renderMaster(); renderQuick(); save();
+};
+
+// ---- マスタ CSV
+const CSV_HEAD = ["仕入先コード","仕入先名","所在地","備考","品番","品名","容器","長さmm","幅mm","高さmm","収容数","単重kg","風袋kg","段積み上限","回転可","天地無用","上積み可"];
+const yn = v => v ? "1" : "0";
+const truthy = v => /^(1|true|yes|y|○|〇|可|有|はい)$/i.test(String(v).trim());
+function masterRows(sups){
+  const rows = [CSV_HEAD];
+  for (const s of sups) for (const p of s.parts)
+    rows.push([s.code, s.name, s.site||"", s.note||"", p.no, p.name, p.cont, p.l, p.w, p.h, p.snp, p.unitKg, p.tare||0, p.maxStack||0, yn(p.rot), yn(p.up), yn(p.stk)]);
+  return rows;
+}
+$("#m-csv-out").onclick = () => download(`仕入先マスタ_${today()}.csv`, toCsv(masterRows(S.suppliers)), "text/csv");
+$("#m-csv-tpl").onclick = () => download("仕入先マスタ_テンプレート.csv", toCsv([CSV_HEAD,
+  ["S2001","〇〇工業（株）","愛知県","","AB-0001","ブラケット","TP342","","","","40","0.25","0","0","1","1","1"],
+  ["S2001","〇〇工業（株）","愛知県","","AB-0002","フレーム","専用容器","1100","450","320","20","2.1","5","3","1","1","1"]]), "text/csv");
+$("#m-csv-in").onclick = () => $("#f-csv").click();
+function parseCsv(text){
+  const rows = []; let row = [], cell = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i+1] === '"') { cell += '"'; i++; } else q = false; } else cell += c; }
+    else if (c === '"') q = true;
+    else if (c === ",") { row.push(cell); cell = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i+1] === "\n") i++; row.push(cell); rows.push(row); row = []; cell = ""; }
+    else cell += c;
+  }
+  if (cell !== "" || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(c => c.trim() !== ""));
+}
+$("#f-csv").onchange = async e => {
+  const f = e.target.files[0]; if (!f) return;
+  try {
+    const buf = await f.arrayBuffer();
+    let text;
+    try { text = new TextDecoder("utf-8", {fatal:true}).decode(buf); }
+    catch (_) { text = new TextDecoder("shift_jis").decode(buf); }
+    text = text.replace(/^﻿/, "");
+    const rows = parseCsv(text);
+    if (rows.length < 2) throw new Error("データ行がありません");
+    const head = rows[0].map(h=>h.trim());
+    const col = name => head.indexOf(name);
+    for (const req of ["仕入先コード","品番"]) if (col(req) < 0) throw new Error(`列「${req}」が見つかりません`);
+    const get = (r, name, d="") => { const i = col(name); return i >= 0 && r[i] !== undefined && String(r[i]).trim() !== "" ? String(r[i]).trim() : d; };
+    const num = (r, name, d) => { const v = parseFloat(get(r, name, "")); return isFinite(v) ? v : d; };
+    let nSup = 0, nPart = 0, nNoDim = 0;
+    for (const r of rows.slice(1)) {
+      const code = get(r, "仕入先コード"); if (!code) continue;
+      let sup = supByCode(code);
+      if (!sup) { sup = {code, name:code, site:"", note:"", parts:[]}; S.suppliers.push(sup); nSup++; }
+      sup.name = get(r, "仕入先名", sup.name); sup.site = get(r, "所在地", sup.site); sup.note = get(r, "備考", sup.note);
+      const no = get(r, "品番"); if (!no) continue;
+      const cont = get(r, "容器", "その他"), tp = TP[cont];
+      const p = {no, name:get(r, "品名", no), cont,
+        l:num(r,"長さmm", tp?tp.l:0), w:num(r,"幅mm", tp?tp.w:0), h:num(r,"高さmm", tp?tp.h:0),
+        snp:Math.max(1, Math.floor(num(r,"収容数",1))), unitKg:num(r,"単重kg",0), tare:num(r,"風袋kg",0),
+        maxStack:Math.floor(num(r,"段積み上限",0)),
+        rot:truthy(get(r,"回転可","1")), up:truthy(get(r,"天地無用","1")), stk:truthy(get(r,"上積み可","1")), color:""};
+      if (!(p.l > 0 && p.w > 0 && p.h > 0)) nNoDim++;
+      const i = sup.parts.findIndex(x=>x.no===no);
+      if (i >= 0) sup.parts[i] = p; else sup.parts.push(p);
+      nPart++;
+    }
+    renderMaster(); renderQuick(); save();
+    toast(`取込完了：部品 ${nPart} 件（新規仕入先 ${nSup} 社）` + (nNoDim ? ` ※寸法未入力 ${nNoDim} 件（TP 箱以外は長さ・幅・高さが必要）` : ""), !nNoDim);
+  } catch (err) { toast("CSV 取込に失敗しました：" + err.message); }
+  e.target.value = "";
+};
+
+/* =====================================================================
+ * ④ 車種一覧
+ * ===================================================================== */
+function renderCatalog(){
+  const cap = (t, l, w) => Math.max(Math.floor(t.L/l)*Math.floor(t.W/w), Math.floor(t.L/w)*Math.floor(t.W/l));
+  $("#catalog").innerHTML = `<table><tr><th>車種</th><th>荷台内寸 L×W×H mm</th><th>積載量 kg</th><th>床面高</th><th>T11 枚数</th></tr>` +
+    Object.entries(allTrucks()).map(([k,t]) => `<tr class="click ${k===S.truckKey?"sel":""}" data-k="${esc(k)}"><td>${esc(k)}</td>
+      <td>${fmt(t.L)}×${fmt(t.W)}×${fmt(t.H)}</td><td>${fmt(t.kg)}</td><td>${fmt(t.deck)}</td><td>${cap(t,1100,1100)}</td></tr>`).join("") +
+    `</table><p class="hint">T11 枚数 = 1100×1100 パレットを床に 1 段で並べられる枚数。</p>`;
+}
+$("#catalog").addEventListener("click", e => {
+  const tr = e.target.closest("tr[data-k]"); if (!tr) return;
+  S.truckKey = tr.dataset.k; switchTab("truck"); applyTruck(allTrucks()[S.truckKey]);
+});
+$("#b-reset").onclick = () => {
+  if (!confirm("設定・仕入先マスタ・カスタム車種・積載計画をすべて初期化しますか？\n（必要ならマスタ CSV を先に出力してください）")) return;
+  try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+  S = defaults(); renderAll(); rebuild3D(true);
+};
+
+/* =====================================================================
+ * タブ / 起動
+ * ===================================================================== */
+const modeOf = tab => tab === "pallet" ? "pallet" : "truck";
+function switchTab(tab){
+  const prev = modeOf(S.tab);
+  S.tab = tab;
+  $$(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+  for (const id of ["pallet","truck","master","catalog"]) $("#tab-"+id).hidden = id !== tab;
+  $("#panel").classList.toggle("wide", tab === "master");
+  if (G && modeOf(tab) !== prev) rebuild3D(true);
+  renderHud(); save();
+}
+$$(".tabs button").forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+
+function renderAll(){
+  renderPalletForm(); renderQuick(); renderBoxes(); renderPackResult(); renderTruckForm(); renderMaster(); renderCatalog(); renderSelInfo();
+  $$(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === S.tab));
+  for (const id of ["pallet","truck","master","catalog"]) $("#tab-"+id).hidden = id !== S.tab;
+  $("#panel").classList.toggle("wide", S.tab === "master");
+  renderHud();
+}
+
+initScene();
+renderAll();
+if (G) rebuild3D(true);
+window.TruckLoader = {get S(){ return S; }, packPallets, arrangeInTruck, computeStats};   // コンソールでのデバッグ用
+</script>
+</body>
+</html>
